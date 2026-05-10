@@ -99,12 +99,14 @@ export function buildTelegramConfig(): {
   proxyUrl: string;
   apiRoot: string;
   proxySecret: string;
+  forceIpv4: boolean;
 } {
   const proxyUrl = getEnvVar("TELEGRAM_PROXY_URL", false);
   // grammY rejects an apiRoot ending with `/`, so normalize once at config
   // load instead of leaking the concern into every consumer.
   const apiRoot = getEnvVar("TELEGRAM_API_ROOT", false).replace(/\/+$/, "");
   const proxySecret = getEnvVar("TELEGRAM_PROXY_SECRET", false);
+  const forceIpv4 = getOptionalBooleanEnvVar("TELEGRAM_FORCE_IPV4", false);
 
   if (proxyUrl && apiRoot) {
     throw new Error(
@@ -126,6 +128,7 @@ export function buildTelegramConfig(): {
     proxyUrl,
     apiRoot,
     proxySecret,
+    forceIpv4,
   };
 }
 

@@ -1,11 +1,7 @@
-// @ts-expect-error — node-fetch v2 ships no TS types and we avoid adding @types/node-fetch
-import nodeFetch from "node-fetch";
 import { Bot, Context, InputFile, NextFunction } from "grammy";
 import { promises as fs } from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
-import { SocksProxyAgent } from "socks-proxy-agent";
-import { HttpsProxyAgent } from "https-proxy-agent";
 import { config } from "../config.js";
 import { authMiddleware } from "./middleware/auth.js";
 import { interactionGuardMiddleware } from "./middleware/interaction-guard.js";
@@ -78,6 +74,7 @@ import { withTelegramRateLimitRetry } from "../utils/telegram-rate-limit-retry.j
 import { pinnedMessageManager } from "../pinned/manager.js";
 import { t } from "../i18n/index.js";
 import { getCurrentProject } from "../settings/manager.js";
+import { createTelegramBotOptions } from "./telegram-client-options.js";
 import { clearPromptResponseMode, processUserPrompt } from "./handlers/prompt.js";
 import { handleVoiceMessage } from "./handlers/voice.js";
 import { handleDocumentMessage } from "./handlers/document.js";
@@ -1058,52 +1055,7 @@ export function createBot(): Bot<Context> {
     heartbeatTimer = null;
   }
 
-  const botOptions: ConstructorParameters<typeof Bot<Context>>[1] = {};
-
-  if (config.telegram.apiRoot || config.telegram.proxySecret) {
-    botOptions.client = botOptions.client ?? {};
-    if (config.telegram.apiRoot) {
-      botOptions.client.apiRoot = config.telegram.apiRoot;
-      logger.info(`[Bot] Using custom Telegram API root: ${config.telegram.apiRoot}`);
-    }
-    if (config.telegram.proxySecret) {
-      // Inject the shared-secret header via a custom fetch wrapper instead of
-      // baseFetchConfig.headers, because grammY's client spreads
-      // `{...baseFetchConfig, ...config}` and the per-request config.headers
-      // (Content-Type/Length) wipes out anything we put on baseFetchConfig.
-      // Plain-object headers merge (not the Headers class) keeps this compatible
-      // with node-fetch v2's init shape and avoids the DOM lib HeadersInit type.
-      const proxySecret = config.telegram.proxySecret;
-      botOptions.client.fetch = (((url: unknown, init: Record<string, unknown> | undefined) => {
-        const existing = (init?.headers as Record<string, string> | undefined) ?? {};
-        const merged = { ...existing, "X-Proxy-Secret": proxySecret };
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return (nodeFetch as any)(url, { ...(init ?? {}), headers: merged });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      }) as any);
-      logger.info(`[Bot] Sending X-Proxy-Secret header to Telegram API root`);
-    }
-  }
-
-  if (config.telegram.proxyUrl) {
-    const proxyUrl = config.telegram.proxyUrl;
-    let agent;
-
-    if (proxyUrl.startsWith("socks")) {
-      agent = new SocksProxyAgent(proxyUrl);
-      logger.info(`[Bot] Using SOCKS proxy: ${proxyUrl.replace(/\/\/.*@/, "//***@")}`);
-    } else {
-      agent = new HttpsProxyAgent(proxyUrl);
-      logger.info(`[Bot] Using HTTP/HTTPS proxy: ${proxyUrl.replace(/\/\/.*@/, "//***@")}`);
-    }
-
-    botOptions.client = {
-      baseFetchConfig: {
-        agent,
-        compress: true,
-      },
-    };
-  }
+  const botOptions = createTelegramBotOptions(config.telegram);
 
   const bot = new Bot(config.telegram.token, botOptions);
   botInstance = bot;

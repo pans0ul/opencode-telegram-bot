@@ -301,6 +301,7 @@ describe("config telegram reverse-proxy", () => {
     delete process.env.TELEGRAM_PROXY_URL;
     delete process.env.TELEGRAM_API_ROOT;
     delete process.env.TELEGRAM_PROXY_SECRET;
+    delete process.env.TELEGRAM_FORCE_IPV4;
   });
 
   // Drive buildTelegramConfig directly: re-importing the whole config module to
@@ -318,6 +319,31 @@ describe("config telegram reverse-proxy", () => {
 
     expect(telegram.apiRoot).toBe("");
     expect(telegram.proxySecret).toBe("");
+  });
+
+  it("disables forced IPv4 by default", async () => {
+    const buildTelegramConfig = await loadBuilder();
+
+    expect(buildTelegramConfig().forceIpv4).toBe(false);
+  });
+
+  it("parses TELEGRAM_FORCE_IPV4 as a boolean", async () => {
+    vi.stubEnv("TELEGRAM_FORCE_IPV4", "true");
+    const buildTelegramConfig = await loadBuilder();
+
+    expect(buildTelegramConfig().forceIpv4).toBe(true);
+  });
+
+  it("allows TELEGRAM_FORCE_IPV4 together with reverse proxy settings", async () => {
+    vi.stubEnv("TELEGRAM_API_ROOT", "https://tg-proxy.example.com");
+    vi.stubEnv("TELEGRAM_PROXY_SECRET", "shared-secret");
+    vi.stubEnv("TELEGRAM_FORCE_IPV4", "true");
+    const buildTelegramConfig = await loadBuilder();
+
+    const telegram = buildTelegramConfig();
+    expect(telegram.apiRoot).toBe("https://tg-proxy.example.com");
+    expect(telegram.proxySecret).toBe("shared-secret");
+    expect(telegram.forceIpv4).toBe(true);
   });
 
   it("strips a trailing slash from TELEGRAM_API_ROOT", async () => {

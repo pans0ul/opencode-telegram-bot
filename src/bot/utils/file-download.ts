@@ -1,4 +1,7 @@
+// @ts-expect-error — node-fetch v2 ships no TS types and we avoid adding @types/node-fetch
+import nodeFetch from "node-fetch";
 import type { Api } from "grammy";
+import { Agent as HttpsAgent } from "https";
 import { config } from "../../config.js";
 import { logger } from "../../utils/logger.js";
 
@@ -46,6 +49,8 @@ export async function downloadTelegramFile(api: Api, fileId: string): Promise<Do
   if (config.telegram.proxyUrl) {
     const { HttpsProxyAgent } = await import("https-proxy-agent");
     fetchOptions.agent = new HttpsProxyAgent(config.telegram.proxyUrl);
+  } else if (config.telegram.forceIpv4) {
+    fetchOptions.agent = new HttpsAgent({ family: 4, keepAlive: true });
   }
 
   // Send shared secret when custom API root expects it
@@ -56,7 +61,7 @@ export async function downloadTelegramFile(api: Api, fileId: string): Promise<Do
     };
   }
 
-  const response = await fetch(fileUrl, fetchOptions);
+  const response = await nodeFetch(fileUrl, fetchOptions);
 
   if (!response.ok) {
     throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);

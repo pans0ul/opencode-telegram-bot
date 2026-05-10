@@ -1,11 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Api } from "grammy";
+import { Agent as HttpsAgent } from "https";
 import {
   toDataUri,
   formatFileSize,
   isFileSizeAllowed,
   isTextMimeType,
 } from "../../../src/bot/utils/file-download.js";
+
+const nodeFetchMock = vi.hoisted(() => vi.fn());
+
+vi.mock("node-fetch", () => ({
+  default: nodeFetchMock,
+}));
 
 describe("bot/utils/file-download", () => {
   describe("toDataUri", () => {
@@ -119,6 +126,8 @@ describe("downloadTelegramFile reverse-proxy wiring", () => {
     vi.stubEnv("TELEGRAM_PROXY_URL", "");
     vi.stubEnv("TELEGRAM_API_ROOT", "");
     vi.stubEnv("TELEGRAM_PROXY_SECRET", "");
+    vi.stubEnv("TELEGRAM_FORCE_IPV4", "");
+    nodeFetchMock.mockReset();
   });
 
   function makeApiStub(): Api {
@@ -131,7 +140,7 @@ describe("downloadTelegramFile reverse-proxy wiring", () => {
   }
 
   function makeFetchStub(): ReturnType<typeof vi.fn> {
-    return vi.fn().mockResolvedValue({
+    return nodeFetchMock.mockResolvedValue({
       ok: true,
       arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
     });
@@ -202,5 +211,30 @@ describe("downloadTelegramFile reverse-proxy wiring", () => {
     const [, init] = fetchMock.mock.calls[0];
     const headers = (init as { headers?: Record<string, string> } | undefined)?.headers;
     expect(headers?.["X-Proxy-Secret"]).toBe("secret-abc");
+  });
+
+  it("does not configure a fetch agent for direct downloads by default", async () => {
+    const fetchMock = makeFetchStub();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { downloadTelegramFile } = await loadDownloadModule();
+    await downloadTelegramFile(makeApiStub(), "fid");
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect((init as { agent?: unknown } | undefined)?.agent).toBeUndefined();
+  });
+
+  it("uses an IPv4 HTTPS agent for direct downloads when TELEGRAM_FORCE_IPV4 is enabled", async () => {
+    vi.stubEnv("TELEGRAM_FORCE_IPV4", "true");
+    const fetchMock = makeFetchStub();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { downloadTelegramFile } = await loadDownloadModule();
+    await downloadTelegramFile(makeApiStub(), "fid");
+
+    const [, init] = fetchMock.mock.calls[0];
+    const agent = (init as { agent?: unknown } | undefined)?.agent;
+    expect(agent).toBeInstanceOf(HttpsAgent);
+    expect((agent as HttpsAgent).options.family).toBe(4);
   });
 });
