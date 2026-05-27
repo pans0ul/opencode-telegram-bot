@@ -274,6 +274,12 @@ export const fr: I18nDictionary = {
   "model.menu.favorites_hint":
     "ℹ️ Ajoutez des modèles aux favoris dans l'interface OpenCode pour les garder en tête de liste.",
   "model.menu.error": "🔴 Impossible de récupérer la liste des modèles",
+  "model.search.button": "🔍 Rechercher",
+  "model.search.prompt": "🔍 Entrez le nom du modèle à rechercher :",
+  "model.search.results_title": "Résultats de recherche pour \"{query}\" :",
+  "model.search.no_results": "Aucun modèle trouvé pour \"{query}\"",
+  "model.search.search_again": "↩ Rechercher à nouveau",
+  "model.search.error": "Échec de la recherche",
 
   "variant.model_not_selected_callback": "Erreur : aucun modèle sélectionné",
   "variant.changed_callback": "Variante modifiée : {name}",

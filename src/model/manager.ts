@@ -19,8 +19,11 @@ const SERVER_UNAVAILABLE_ERROR_MARKERS = [
 ];
 
 let cachedValidModelKeys: Set<string> | null = null;
+let cachedAllModels: FavoriteModel[] | null = null;
 let modelCatalogCacheExpiresAt = 0;
 let modelCatalogFetchInFlight: Promise<Set<string> | null> | null = null;
+
+const SEARCH_RESULTS_LIMIT = 10;
 
 function getModelKey(providerID: string, modelID: string): string {
   return `${providerID}/${modelID}`;
@@ -168,14 +171,17 @@ async function getValidModelKeys(options?: { force?: boolean }): Promise<Set<str
       }
 
       const validModelKeys = new Set<string>();
+      const allModels: FavoriteModel[] = [];
 
       for (const provider of response.data.providers) {
         for (const modelID of Object.keys(provider.models)) {
           validModelKeys.add(getModelKey(provider.id, modelID));
+          allModels.push({ providerID: provider.id, modelID });
         }
       }
 
       cachedValidModelKeys = validModelKeys;
+      cachedAllModels = allModels;
       modelCatalogCacheExpiresAt = Date.now() + MODEL_CATALOG_CACHE_TTL_MS;
 
       logger.debug(
@@ -374,6 +380,7 @@ export async function reconcileStoredModelSelection(options?: {
 
 export function __resetModelCatalogCacheForTests(): void {
   cachedValidModelKeys = null;
+  cachedAllModels = null;
   modelCatalogCacheExpiresAt = 0;
   modelCatalogFetchInFlight = null;
 }
@@ -385,6 +392,47 @@ export function __resetModelCatalogCacheForTests(): void {
 export async function getFavoriteModels(): Promise<FavoriteModel[]> {
   const { favorites } = await getModelSelectionLists();
   return favorites;
+}
+
+/**
+ * Search models across the full provider catalog.
+ * Matches case-insensitive substring against "providerID/modelID".
+ * Returns at most SEARCH_RESULTS_LIMIT results sorted alphabetically.
+ * @param query Search query string
+ * @returns Matching models, empty array if catalog unavailable or no matches
+ */
+export async function searchModels(query: string): Promise<FavoriteModel[]> {
+  const normalizedQuery = query.trim().toLowerCase();
+
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  // Ensure catalog is loaded (uses cache if fresh)
+  const validKeys = await getValidModelKeys();
+
+  if (!validKeys || !cachedAllModels) {
+    logger.warn("[ModelManager] Model catalog unavailable, skipping search");
+    return [];
+  }
+
+  const results = cachedAllModels
+    .filter((model) => {
+      const key = getModelKey(model.providerID, model.modelID).toLowerCase();
+      return key.includes(normalizedQuery);
+    })
+    .sort((a, b) => {
+      const keyA = getModelKey(a.providerID, a.modelID).toLowerCase();
+      const keyB = getModelKey(b.providerID, b.modelID).toLowerCase();
+      return keyA.localeCompare(keyB);
+    })
+    .slice(0, SEARCH_RESULTS_LIMIT);
+
+  logger.debug(
+    `[ModelManager] Model search: query="${query}", results=${results.length}`,
+  );
+
+  return results;
 }
 
 /**

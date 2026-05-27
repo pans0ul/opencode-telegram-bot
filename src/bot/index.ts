@@ -52,7 +52,13 @@ import {
 } from "./handlers/question.js";
 import { handlePermissionCallback, showPermissionRequest } from "./handlers/permission.js";
 import { handleAgentSelect, showAgentSelectionMenu } from "./handlers/agent.js";
-import { handleModelSelect, showModelSelectionMenu } from "./handlers/model.js";
+import {
+  handleModelSelect,
+  handleModelSearchCallback,
+  handleModelSearchResults,
+  handleModelSearchTextInput,
+  showModelSelectionMenu,
+} from "./handlers/model.js";
 import { handleVariantSelect, showVariantSelectionMenu } from "./handlers/variant.js";
 import { handleContextButtonPress, handleCompactConfirm } from "./handlers/context.js";
 import { handleInlineMenuCancel } from "./handlers/inline-menu.js";
@@ -1209,6 +1215,8 @@ export function createBot(): Bot<Context> {
       const handledQuestion = await handleQuestionCallback(ctx);
       const handledPermission = await handlePermissionCallback(ctx);
       const handledAgent = await handleAgentSelect(ctx);
+      const handledModelSearch = await handleModelSearchCallback(ctx);
+      const handledModelSearchResults = await handleModelSearchResults(ctx);
       const handledModel = await handleModelSelect(ctx);
       const handledVariant = await handleVariantSelect(ctx);
       const handledCompactConfirm = await handleCompactConfirm(ctx);
@@ -1220,7 +1228,7 @@ export function createBot(): Bot<Context> {
       const handledMcps = await handleMcpsCallback(ctx);
 
       logger.debug(
-        `[Bot] Callback handled: backgroundSession=${handledBackgroundSession}, inlineCancel=${handledInlineCancel}, session=${handledSession}, project=${handledProject}, worktree=${handledWorktree}, open=${handledOpen}, ls=${handledLs}, question=${handledQuestion}, permission=${handledPermission}, agent=${handledAgent}, model=${handledModel}, variant=${handledVariant}, compactConfirm=${handledCompactConfirm}, task=${handledTask}, taskList=${handledTaskList}, rename=${handledRenameCancel}, commands=${handledCommands}, skills=${handledSkills}, mcps=${handledMcps}`,
+        `[Bot] Callback handled: backgroundSession=${handledBackgroundSession}, inlineCancel=${handledInlineCancel}, session=${handledSession}, project=${handledProject}, worktree=${handledWorktree}, open=${handledOpen}, ls=${handledLs}, question=${handledQuestion}, permission=${handledPermission}, agent=${handledAgent}, modelSearch=${handledModelSearch}, modelSearchResults=${handledModelSearchResults}, model=${handledModel}, variant=${handledVariant}, compactConfirm=${handledCompactConfirm}, task=${handledTask}, taskList=${handledTaskList}, rename=${handledRenameCancel}, commands=${handledCommands}, skills=${handledSkills}, mcps=${handledMcps}`,
       );
 
       if (
@@ -1234,6 +1242,8 @@ export function createBot(): Bot<Context> {
         !handledQuestion &&
         !handledPermission &&
         !handledAgent &&
+        !handledModelSearch &&
+        !handledModelSearchResults &&
         !handledModel &&
         !handledVariant &&
         !handledCompactConfirm &&
@@ -1467,6 +1477,11 @@ export function createBot(): Bot<Context> {
 
     const handledTask = await handleTaskTextInput(ctx);
     if (handledTask) {
+      return;
+    }
+
+    const handledModelSearchText = await handleModelSearchTextInput(ctx);
+    if (handledModelSearchText) {
       return;
     }
 

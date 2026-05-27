@@ -270,6 +270,12 @@ export const es: I18nDictionary = {
   "model.menu.favorites_hint":
     "ℹ️ Agrega modelos a favoritos en OpenCode CLI para mantenerlos arriba de la lista.",
   "model.menu.error": "🔴 No se pudo obtener la lista de modelos",
+  "model.search.button": "🔍 Buscar",
+  "model.search.prompt": "🔍 Ingrese el nombre del modelo para buscar:",
+  "model.search.results_title": "Resultados de búsqueda para \"{query}\":",
+  "model.search.no_results": "No se encontraron modelos para \"{query}\"",
+  "model.search.search_again": "↩ Buscar de nuevo",
+  "model.search.error": "Búsqueda fallida",
 
   "variant.model_not_selected_callback": "Error: no hay un modelo seleccionado",
   "variant.changed_callback": "Variante cambiada: {name}",

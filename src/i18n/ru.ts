@@ -259,6 +259,12 @@ export const ru: I18nDictionary = {
   "model.menu.favorites_hint":
     "ℹ️ Добавляйте модели в избранное через OpenCode CLI, чтобы они были вверху списка.",
   "model.menu.error": "🔴 Не удалось получить список моделей",
+  "model.search.button": "🔍 Поиск",
+  "model.search.prompt": "🔍 Введите название модели для поиска:",
+  "model.search.results_title": "Результаты поиска для \"{query}\":",
+  "model.search.no_results": "Модели не найдены для \"{query}\"",
+  "model.search.search_again": "↩ Искать снова",
+  "model.search.error": "Ошибка поиска",
 
   "variant.model_not_selected_callback": "Ошибка: модель не выбрана",
   "variant.changed_callback": "Вариант изменен: {name}",

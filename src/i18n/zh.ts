@@ -225,6 +225,12 @@ export const zh: I18nDictionary = {
   "model.menu.recent_empty": "— 列表为空。",
   "model.menu.favorites_hint": "ℹ️ 可在 OpenCode CLI 中将模型加入收藏，使其显示在列表顶部。",
   "model.menu.error": "🔴 获取模型列表失败",
+  "model.search.button": "🔍 搜索",
+  "model.search.prompt": "🔍 输入模型名称进行搜索：",
+  "model.search.results_title": "\"{query}\" 的搜索结果：",
+  "model.search.no_results": "未找到 \"{query}\" 的模型",
+  "model.search.search_again": "↩ 重新搜索",
+  "model.search.error": "搜索失败",
 
   "variant.model_not_selected_callback": "错误：未选择模型",
   "variant.changed_callback": "变体已更改：{name}",
