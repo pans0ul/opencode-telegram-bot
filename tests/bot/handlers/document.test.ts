@@ -43,6 +43,7 @@ function createDocumentDeps(overrides: Partial<DocumentHandlerDeps> = {}): {
   downloadMock: ReturnType<typeof vi.fn>;
   getCapabilitiesMock: ReturnType<typeof vi.fn>;
   getStoredModelMock: ReturnType<typeof vi.fn>;
+  saveFileToWorkspaceMock: ReturnType<typeof vi.fn>;
 } {
   const processPromptMock = vi.fn().mockResolvedValue(true);
   const downloadMock = vi.fn().mockResolvedValue({
@@ -56,6 +57,7 @@ function createDocumentDeps(overrides: Partial<DocumentHandlerDeps> = {}): {
     providerID: "test-provider",
     modelID: "test-model",
   });
+  const saveFileToWorkspaceMock = vi.fn().mockResolvedValue("/workspace/test.txt");
 
   const deps: DocumentHandlerDeps = {
     bot: {} as DocumentHandlerDeps["bot"],
@@ -64,10 +66,11 @@ function createDocumentDeps(overrides: Partial<DocumentHandlerDeps> = {}): {
     getModelCapabilities: getCapabilitiesMock,
     getStoredModel: getStoredModelMock,
     processPrompt: processPromptMock,
+    saveFileToWorkspace: saveFileToWorkspaceMock,
     ...overrides,
   };
 
-  return { deps, processPromptMock, downloadMock, getCapabilitiesMock, getStoredModelMock };
+  return { deps, processPromptMock, downloadMock, getCapabilitiesMock, getStoredModelMock, saveFileToWorkspaceMock };
 }
 
 describe("bot/handlers/document", () => {
@@ -86,7 +89,7 @@ describe("bot/handlers/document", () => {
       expect(downloadMock).toHaveBeenCalled();
       expect(processPromptMock).toHaveBeenCalledWith(
         ctx,
-        "--- Content of test.txt ---\nfile content here\n--- End of file ---\n\n",
+        expect.stringContaining("Content of test.txt"),
         deps,
       );
     });
@@ -121,6 +124,19 @@ describe("bot/handlers/document", () => {
       expect(replyMock).toHaveBeenCalledWith(t("bot.text_file_too_large", { maxSizeKb: "100" }));
       expect(downloadMock).not.toHaveBeenCalled();
       expect(processPromptMock).not.toHaveBeenCalled();
+    });
+
+    it("saves text file to workspace after download", async () => {
+      const { ctx } = createDocumentContext();
+      const { deps, downloadMock, saveFileToWorkspaceMock } = createDocumentDeps();
+
+      await handleDocumentMessage(ctx, deps);
+
+      expect(downloadMock).toHaveBeenCalled();
+      expect(saveFileToWorkspaceMock).toHaveBeenCalledWith(
+        "test.txt",
+        expect.any(Buffer),
+      );
     });
 
     it("accepts application/json as text file", async () => {
@@ -197,7 +213,7 @@ describe("bot/handlers/document", () => {
       expect(downloadMock).toHaveBeenCalled();
       expect(processPromptMock).toHaveBeenCalledWith(
         ctx,
-        "",
+        expect.stringContaining("[File saved at:"),
         deps,
         expect.arrayContaining([
           expect.objectContaining({ type: "file", mime: "application/pdf" }),
@@ -205,7 +221,7 @@ describe("bot/handlers/document", () => {
       );
     });
 
-    it("shows error when model does not support PDF", async () => {
+    it("downloads and sends path when model does not support PDF", async () => {
       const { ctx, replyMock } = createDocumentContext({
         document: {
           file_id: "pdf-file-id",
@@ -215,7 +231,7 @@ describe("bot/handlers/document", () => {
           file_size: 5000,
         },
       });
-      const { deps, processPromptMock } = createDocumentDeps({
+      const { deps, processPromptMock, downloadMock } = createDocumentDeps({
         getModelCapabilities: vi.fn().mockResolvedValue({
           input: { pdf: false },
         }),
@@ -223,12 +239,18 @@ describe("bot/handlers/document", () => {
 
       await handleDocumentMessage(ctx, deps);
 
-      expect(replyMock).toHaveBeenCalledWith(t("bot.model_no_pdf"));
-      expect(processPromptMock).not.toHaveBeenCalled();
+      expect(replyMock).toHaveBeenCalledWith(t("bot.file_downloading"));
+      expect(downloadMock).toHaveBeenCalled();
+      expect(processPromptMock).toHaveBeenCalledWith(
+        ctx,
+        expect.stringContaining("[File saved at:"),
+        deps,
+        undefined,
+      );
     });
 
-    it("sends caption-only when model does not support PDF but caption exists", async () => {
-      const { ctx, replyMock } = createDocumentContext({
+    it("sends prompt with path when model does not support PDF but caption exists", async () => {
+      const { ctx } = createDocumentContext({
         document: {
           file_id: "pdf-file-id",
           file_unique_id: "pdf-unique-id",
@@ -238,7 +260,7 @@ describe("bot/handlers/document", () => {
         },
         caption: "Summarize this document",
       });
-      const { deps, processPromptMock } = createDocumentDeps({
+      const { deps, processPromptMock, downloadMock } = createDocumentDeps({
         getModelCapabilities: vi.fn().mockResolvedValue({
           input: { pdf: false },
         }),
@@ -246,7 +268,34 @@ describe("bot/handlers/document", () => {
 
       await handleDocumentMessage(ctx, deps);
 
-      expect(processPromptMock).toHaveBeenCalledWith(ctx, "Summarize this document", deps);
+      expect(downloadMock).toHaveBeenCalled();
+      expect(processPromptMock).toHaveBeenCalledWith(
+        ctx,
+        expect.stringContaining("Summarize this document"),
+        deps,
+        undefined,
+      );
+    });
+
+    it("saves PDF to workspace after download", async () => {
+      const { ctx } = createDocumentContext({
+        document: {
+          file_id: "pdf-file-id",
+          file_unique_id: "pdf-unique-id",
+          file_name: "document.pdf",
+          mime_type: "application/pdf",
+          file_size: 5000,
+        },
+      });
+      const { deps, downloadMock, saveFileToWorkspaceMock } = createDocumentDeps();
+
+      await handleDocumentMessage(ctx, deps);
+
+      expect(downloadMock).toHaveBeenCalled();
+      expect(saveFileToWorkspaceMock).toHaveBeenCalledWith(
+        "document.pdf",
+        expect.any(Buffer),
+      );
     });
   });
 
@@ -270,7 +319,7 @@ describe("bot/handlers/document", () => {
       expect(downloadMock).toHaveBeenCalled();
       expect(processPromptMock).toHaveBeenCalledWith(
         ctx,
-        "Describe this image",
+        expect.stringContaining("Describe this image"),
         deps,
         expect.arrayContaining([
           expect.objectContaining({
@@ -283,7 +332,7 @@ describe("bot/handlers/document", () => {
       );
     });
 
-    it("shows error when model does not support images", async () => {
+    it("downloads and sends path when model does not support images", async () => {
       const { ctx, replyMock } = createDocumentContext({
         document: {
           file_id: "image-file-id",
@@ -301,12 +350,17 @@ describe("bot/handlers/document", () => {
 
       await handleDocumentMessage(ctx, deps);
 
-      expect(replyMock).toHaveBeenCalledWith(t("bot.photo_model_no_image"));
-      expect(downloadMock).not.toHaveBeenCalled();
-      expect(processPromptMock).not.toHaveBeenCalled();
+      expect(replyMock).toHaveBeenCalledWith(t("bot.file_downloading"));
+      expect(downloadMock).toHaveBeenCalled();
+      expect(processPromptMock).toHaveBeenCalledWith(
+        ctx,
+        expect.stringContaining("[File saved at:"),
+        deps,
+        undefined,
+      );
     });
 
-    it("sends caption-only when model does not support images but caption exists", async () => {
+    it("sends prompt with path when model does not support images but caption exists", async () => {
       const { ctx } = createDocumentContext({
         document: {
           file_id: "image-file-id",
@@ -325,8 +379,34 @@ describe("bot/handlers/document", () => {
 
       await handleDocumentMessage(ctx, deps);
 
-      expect(downloadMock).not.toHaveBeenCalled();
-      expect(processPromptMock).toHaveBeenCalledWith(ctx, "Describe this image", deps);
+      expect(downloadMock).toHaveBeenCalled();
+      expect(processPromptMock).toHaveBeenCalledWith(
+        ctx,
+        expect.stringContaining("Describe this image"),
+        deps,
+        undefined,
+      );
+    });
+
+    it("saves image document to workspace after download", async () => {
+      const { ctx } = createDocumentContext({
+        document: {
+          file_id: "image-file-id",
+          file_unique_id: "image-unique-id",
+          file_name: "photo.png",
+          mime_type: "image/png",
+          file_size: 5000,
+        },
+      });
+      const { deps, downloadMock, saveFileToWorkspaceMock } = createDocumentDeps();
+
+      await handleDocumentMessage(ctx, deps);
+
+      expect(downloadMock).toHaveBeenCalled();
+      expect(saveFileToWorkspaceMock).toHaveBeenCalledWith(
+        "photo.png",
+        expect.any(Buffer),
+      );
     });
   });
 

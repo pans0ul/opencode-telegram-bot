@@ -7,6 +7,7 @@ import {
   isTextMimeType,
   isFileSizeAllowed,
 } from "../utils/file-download.js";
+import { saveFileToWorkspace } from "../utils/workspace.js";
 import { getModelCapabilities, supportsInput } from "../../model/capabilities.js";
 import { getStoredModel } from "../../model/manager.js";
 import { logger } from "../../utils/logger.js";
@@ -29,6 +30,19 @@ export interface DocumentHandlerDeps extends ProcessPromptDeps {
     deps: ProcessPromptDeps,
     fileParts?: FilePartInput[],
   ) => Promise<boolean>;
+  saveFileToWorkspace?: (
+    filename: string,
+    buffer: Buffer,
+  ) => Promise<string | null>;
+}
+
+function buildPromptWithPath(baseText: string, savedPath: string | null): string {
+  if (!savedPath) {
+    return baseText;
+  }
+
+  const pathInfo = `[File saved at: ${savedPath}]`;
+  return baseText.trim() ? `${baseText}\n\n${pathInfo}` : pathInfo;
 }
 
 export async function handleDocumentMessage(
@@ -39,6 +53,7 @@ export async function handleDocumentMessage(
   const getCapabilities = deps.getModelCapabilities ?? getModelCapabilities;
   const getStored = deps.getStoredModel ?? getStoredModel;
   const processPrompt = deps.processPrompt ?? processUserPrompt;
+  const saveFile = deps.saveFileToWorkspace ?? saveFileToWorkspace;
 
   const doc = ctx.message?.document;
   if (!doc) {
@@ -63,10 +78,13 @@ export async function handleDocumentMessage(
 
       await ctx.reply(t("bot.file_downloading"));
       const downloadedFile = await downloadFile(ctx.api, doc.file_id);
+      const savedPath = await saveFile(filename, downloadedFile.buffer);
 
       const textContent = downloadedFile.buffer.toString("utf-8");
-
-      const promptWithFile = `--- Content of ${filename} ---\n${textContent}\n--- End of file ---\n\n${caption}`;
+      const promptWithFile = buildPromptWithPath(
+        `--- Content of ${filename} ---\n${textContent}\n--- End of file ---\n\n${caption}`,
+        savedPath,
+      );
 
       logger.info(
         `[Document] Sending text file (${downloadedFile.buffer.length} bytes, ${filename}) as prompt`,
@@ -80,35 +98,36 @@ export async function handleDocumentMessage(
       const storedModel = getStored();
       const capabilities = await getCapabilities(storedModel.providerID, storedModel.modelID);
 
-      if (!supportsInput(capabilities, "image")) {
-        logger.warn(
-          `[Document] Model ${storedModel.providerID}/${storedModel.modelID} doesn't support image input`,
-        );
-        await ctx.reply(t("bot.photo_model_no_image"));
+      await ctx.reply(t("bot.file_downloading"));
+      const downloadedFile = await downloadFile(ctx.api, doc.file_id);
+      const savedPath = await saveFile(filename, downloadedFile.buffer);
 
-        if (caption.trim().length > 0) {
-          await processPrompt(ctx, caption, deps);
-        }
+      const fileParts: FilePartInput[] = [];
+
+      if (supportsInput(capabilities, "image")) {
+        const dataUri = toDataUri(downloadedFile.buffer, mimeType);
+        fileParts.push({
+          type: "file",
+          mime: mimeType,
+          filename: filename,
+          url: dataUri,
+        });
+        logger.info(
+          `[Document] Sending image (${downloadedFile.buffer.length} bytes, ${filename}, ${mimeType}) with prompt`,
+        );
+      } else {
+        logger.warn(
+          `[Document] Model ${storedModel.providerID}/${storedModel.modelID} doesn't support image input, sending path only`,
+        );
+      }
+
+      const promptText = buildPromptWithPath(caption, savedPath);
+      if (!promptText && fileParts.length === 0) {
+        await ctx.reply(t("bot.photo_no_caption"));
         return;
       }
 
-      await ctx.reply(t("bot.file_downloading"));
-      const downloadedFile = await downloadFile(ctx.api, doc.file_id);
-
-      const dataUri = toDataUri(downloadedFile.buffer, mimeType);
-
-      const filePart: FilePartInput = {
-        type: "file",
-        mime: mimeType,
-        filename: filename,
-        url: dataUri,
-      };
-
-      logger.info(
-        `[Document] Sending image (${downloadedFile.buffer.length} bytes, ${filename}, ${mimeType}) with prompt`,
-      );
-
-      await processPrompt(ctx, caption, deps, [filePart]);
+      await processPrompt(ctx, promptText, deps, fileParts.length > 0 ? fileParts : undefined);
       return;
     }
 
@@ -116,35 +135,72 @@ export async function handleDocumentMessage(
       const storedModel = getStored();
       const capabilities = await getCapabilities(storedModel.providerID, storedModel.modelID);
 
-      if (!supportsInput(capabilities, "pdf")) {
-        logger.warn(
-          `[Document] Model ${storedModel.providerID}/${storedModel.modelID} doesn't support PDF input`,
-        );
-        await ctx.reply(t("bot.model_no_pdf"));
+      await ctx.reply(t("bot.file_downloading"));
+      const downloadedFile = await downloadFile(ctx.api, doc.file_id);
+      const savedPath = await saveFile(filename, downloadedFile.buffer);
 
-        if (caption.trim().length > 0) {
-          await processPrompt(ctx, caption, deps);
-        }
+      const fileParts: FilePartInput[] = [];
+
+      if (supportsInput(capabilities, "pdf")) {
+        const dataUri = toDataUri(downloadedFile.buffer, mimeType);
+        fileParts.push({
+          type: "file",
+          mime: mimeType,
+          filename: filename,
+          url: dataUri,
+        });
+        logger.info(
+          `[Document] Sending PDF (${downloadedFile.buffer.length} bytes, ${filename}) with prompt`,
+        );
+      } else {
+        logger.warn(
+          `[Document] Model ${storedModel.providerID}/${storedModel.modelID} doesn't support PDF input, sending path only`,
+        );
+      }
+
+      const promptText = buildPromptWithPath(caption, savedPath);
+      if (!promptText && fileParts.length === 0) {
+        await ctx.reply(t("bot.photo_no_caption"));
         return;
       }
 
+      await processPrompt(ctx, promptText, deps, fileParts.length > 0 ? fileParts : undefined);
+      return;
+    }
+
+    if (mimeType.startsWith("audio/")) {
       await ctx.reply(t("bot.file_downloading"));
       const downloadedFile = await downloadFile(ctx.api, doc.file_id);
+      const savedPath = await saveFile(filename, downloadedFile.buffer);
 
-      const dataUri = toDataUri(downloadedFile.buffer, mimeType);
+      const storedModel = getStored();
+      const capabilities = await getCapabilities(storedModel.providerID, storedModel.modelID);
+      const fileParts: FilePartInput[] = [];
 
-      const filePart: FilePartInput = {
-        type: "file",
-        mime: mimeType,
-        filename: filename,
-        url: dataUri,
-      };
+      if (supportsInput(capabilities, "audio")) {
+        const dataUri = toDataUri(downloadedFile.buffer, mimeType);
+        fileParts.push({
+          type: "file",
+          mime: mimeType,
+          filename: filename,
+          url: dataUri,
+        });
+        logger.info(
+          `[Document] Sending audio (${downloadedFile.buffer.length} bytes, ${filename}) with prompt`,
+        );
+      } else {
+        logger.info(
+          `[Document] Model ${storedModel.providerID}/${storedModel.modelID} doesn't support audio input, sending path only`,
+        );
+      }
 
-      logger.info(
-        `[Document] Sending PDF (${downloadedFile.buffer.length} bytes, ${filename}) with prompt`,
-      );
+      const promptText = buildPromptWithPath(caption, savedPath);
+      if (!promptText && fileParts.length === 0) {
+        await ctx.reply(t("bot.photo_no_caption"));
+        return;
+      }
 
-      await processPrompt(ctx, caption, deps, [filePart]);
+      await processPrompt(ctx, promptText, deps, fileParts.length > 0 ? fileParts : undefined);
       return;
     }
 

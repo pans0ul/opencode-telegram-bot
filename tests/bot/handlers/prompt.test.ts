@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Bot, Context } from "grammy";
 import { processUserPrompt, type ProcessPromptDeps } from "../../../src/bot/handlers/prompt.js";
+import { buildWorkspaceSystemContext } from "../../../src/bot/utils/workspace.js";
 
 const mocked = vi.hoisted(() => ({
   currentProject: { id: "project-1", worktree: "D:\\Projects\\Repo" },
@@ -135,6 +136,11 @@ vi.mock("../../../src/external-input/suppression.js", () => ({
   externalUserInputSuppressionManager: {
     register: mocked.suppressionRegisterMock,
   },
+}));
+
+vi.mock("../../../src/bot/utils/workspace.js", () => ({
+  takeWorkspaceSnapshot: vi.fn().mockResolvedValue(undefined),
+  buildWorkspaceSystemContext: vi.fn().mockResolvedValue(null),
 }));
 
 function createContext(): Context {
@@ -316,6 +322,24 @@ describe("bot/handlers/prompt", () => {
           expect.objectContaining({ type: "file", mime: "image/png" }),
           expect.objectContaining({ type: "file", mime: "image/png" }),
         ],
+      }),
+    );
+  });
+
+  it("injects workspace system context into promptAsync call", async () => {
+    const systemContext = "When the user asks you to send or share a file, save it to the directory: /home/user/uploads. Files in this directory will be automatically sent to the user via Telegram API.";
+    vi.mocked(buildWorkspaceSystemContext).mockResolvedValueOnce(systemContext);
+
+    const handled = await processUserPrompt(createContext(), "Send me a file", createDeps());
+
+    expect(handled).toBe(true);
+
+    const backgroundTask = getScheduledBackgroundTask();
+    await backgroundTask.task();
+
+    expect(mocked.sessionPromptAsyncMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        system: systemContext,
       }),
     );
   });

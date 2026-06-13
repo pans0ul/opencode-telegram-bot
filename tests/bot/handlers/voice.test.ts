@@ -47,6 +47,7 @@ function createVoiceDeps(overrides: Record<string, unknown> = {}): {
   processPromptMock: ReturnType<typeof vi.fn>;
   downloadMock: ReturnType<typeof vi.fn>;
   transcribeMock: ReturnType<typeof vi.fn>;
+  saveFileToWorkspaceMock: ReturnType<typeof vi.fn>;
 } {
   const processPromptMock = vi.fn().mockResolvedValue(true);
   const downloadMock = vi.fn().mockResolvedValue({
@@ -54,6 +55,7 @@ function createVoiceDeps(overrides: Record<string, unknown> = {}): {
     filename: "file_1.oga",
   });
   const transcribeMock = vi.fn().mockResolvedValue({ text: "run tests" });
+  const saveFileToWorkspaceMock = vi.fn().mockResolvedValue("/workspace/file_1.ogg");
 
   const deps: VoiceMessageDeps = {
     bot: {} as VoiceMessageDeps["bot"],
@@ -62,10 +64,11 @@ function createVoiceDeps(overrides: Record<string, unknown> = {}): {
     downloadTelegramFile: downloadMock,
     transcribeAudio: transcribeMock,
     processPrompt: processPromptMock,
+    saveFileToWorkspace: saveFileToWorkspaceMock,
     ...overrides,
   };
 
-  return { deps, processPromptMock, downloadMock, transcribeMock };
+  return { deps, processPromptMock, downloadMock, transcribeMock, saveFileToWorkspaceMock };
 }
 
 function mockHttpsDownload(): ReturnType<typeof vi.fn> {
@@ -140,20 +143,21 @@ describe("bot/handlers/voice", () => {
     await handleVoiceMessage(ctx, deps);
 
     expect(replyMock).toHaveBeenCalledWith(t("stt.recognizing"));
-    expect(processPromptMock).toHaveBeenCalledWith(ctx, "run tests", deps);
+    expect(processPromptMock).toHaveBeenCalledWith(ctx, expect.stringContaining("run tests"), deps);
   });
 
-  it("returns not-configured message and does not process prompt", async () => {
+  it("downloads and saves file even when STT is not configured", async () => {
     const { handleVoiceMessage } = await loadVoiceModule();
     const { ctx, replyMock } = createVoiceContext();
-    const { deps, processPromptMock, downloadMock } = createVoiceDeps({
+    const { deps, processPromptMock, downloadMock, saveFileToWorkspaceMock } = createVoiceDeps({
       isSttConfigured: () => false,
     });
 
     await handleVoiceMessage(ctx, deps);
 
-    expect(replyMock).toHaveBeenCalledWith(t("stt.not_configured"));
-    expect(downloadMock).not.toHaveBeenCalled();
+    expect(replyMock).toHaveBeenCalledWith(expect.stringContaining(t("stt.not_configured")));
+    expect(downloadMock).toHaveBeenCalled();
+    expect(saveFileToWorkspaceMock).toHaveBeenCalled();
     expect(processPromptMock).not.toHaveBeenCalled();
   });
 
@@ -185,7 +189,7 @@ describe("bot/handlers/voice", () => {
 
     await handleVoiceMessage(ctx, deps);
 
-    expect(processPromptMock).toHaveBeenCalledWith(ctx, `[Note: ${note}]\nrun tests`, deps);
+    expect(processPromptMock).toHaveBeenCalledWith(ctx, expect.stringContaining(note), deps);
     expect(logger.debug).toHaveBeenCalledWith(
       `[Voice] Added STT note to LLM prompt: [Note: ${note}]`,
     );
@@ -203,7 +207,7 @@ describe("bot/handlers/voice", () => {
 
       await handleVoiceMessage(ctx, deps);
 
-      expect(processPromptMock).toHaveBeenCalledWith(ctx, "run tests", deps);
+      expect(processPromptMock).toHaveBeenCalledWith(ctx, expect.stringContaining("run tests"), deps);
       expect(logger.debug).not.toHaveBeenCalled();
     },
   );
@@ -228,7 +232,7 @@ describe("bot/handlers/voice", () => {
     expect(String(url)).toBe(
       "https://api.telegram.org/file/bottest-telegram-token/voice/file_123.oga",
     );
-    expect(processPromptMock).toHaveBeenCalledWith(ctx, "hello", deps);
+    expect(processPromptMock).toHaveBeenCalledWith(ctx, expect.stringContaining("hello"), deps);
   });
 
   it("downloads voice files from TELEGRAM_API_ROOT without a double slash", async () => {

@@ -7,6 +7,7 @@ import { HttpsProxyAgent } from "https-proxy-agent";
 import { SocksProxyAgent } from "socks-proxy-agent";
 import { config } from "../../config.js";
 import { isSttConfigured, transcribeAudio, type SttResult } from "../../stt/client.js";
+import { saveFileToWorkspace } from "../utils/workspace.js";
 import { processUserPrompt, type ProcessPromptDeps } from "./prompt.js";
 import { logger } from "../../utils/logger.js";
 import { t } from "../../i18n/index.js";
@@ -109,6 +110,10 @@ export interface VoiceMessageDeps extends ProcessPromptDeps {
     fileParts?: FilePartInput[],
     options?: { responseMode?: "text_only" | "text_and_tts" },
   ) => Promise<boolean>;
+  saveFileToWorkspace?: (
+    filename: string,
+    buffer: Buffer,
+  ) => Promise<string | null>;
 }
 
 /**
@@ -175,6 +180,7 @@ export async function handleVoiceMessage(ctx: Context, deps: VoiceMessageDeps): 
   const downloadFile = deps.downloadTelegramFile ?? downloadTelegramFile;
   const transcribe = deps.transcribeAudio ?? transcribeAudio;
   const processPrompt = deps.processPrompt ?? processUserPrompt;
+  const saveFile = deps.saveFileToWorkspace ?? saveFileToWorkspace;
 
   // Determine file_id from voice or audio message
   const voice = ctx.message?.voice;
@@ -186,9 +192,23 @@ export async function handleVoiceMessage(ctx: Context, deps: VoiceMessageDeps): 
     return;
   }
 
-  // Check if STT is configured
+  // Download and save the audio file to workspace regardless of STT config.
+  // If STT is configured, also transcribe and send as prompt.
+  let fileData;
+  let fileSavePath: string | null = null;
+  try {
+    fileData = await downloadFile(ctx, fileId);
+  } catch (err) {
+    logger.error("[Voice] Error downloading file from Telegram:", err);
+  }
+
+  if (fileData) {
+    fileSavePath = await saveFile(fileData.filename, fileData.buffer);
+  }
+
   if (!sttConfigured()) {
-    await ctx.reply(t("stt.not_configured"));
+    const pathInfo = fileSavePath ? `\n\n[File saved at: ${fileSavePath}]` : "";
+    await ctx.reply(`${t("stt.not_configured")}${pathInfo}`.trim());
     return;
   }
 
@@ -196,8 +216,6 @@ export async function handleVoiceMessage(ctx: Context, deps: VoiceMessageDeps): 
   const statusMessage = await ctx.reply(t("stt.recognizing"));
 
   try {
-    // Download the audio file from Telegram
-    const fileData = await downloadFile(ctx, fileId);
     if (!fileData) {
       await ctx.api.editMessageText(
         ctx.chat!.id,
@@ -238,6 +256,10 @@ export async function handleVoiceMessage(ctx: Context, deps: VoiceMessageDeps): 
       const llmNote = `[Note: ${notePrompt}]`;
       logger.debug(`[Voice] Added STT note to LLM prompt: ${llmNote}`);
       textForLLM = `${llmNote}\n${recognizedText}`;
+    }
+
+    if (fileSavePath) {
+      textForLLM = `${textForLLM}\n\n[File saved at: ${fileSavePath}]`;
     }
 
     // Process the recognized text as a prompt

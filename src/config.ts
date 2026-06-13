@@ -190,6 +190,9 @@ export const config = {
   files: {
     maxFileSizeKb: parseInt(getEnvVar("CODE_FILE_MAX_SIZE_KB", false) || "100", 10),
   },
+  workspace: {
+    uploadDir: getEnvVar("WORKSPACE_UPLOAD_DIR", false) || "uploads",
+  },
   open: {
     browserRoots: getEnvVar("OPEN_BROWSER_ROOTS", false),
   },

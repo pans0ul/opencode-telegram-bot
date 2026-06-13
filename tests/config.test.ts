@@ -401,3 +401,36 @@ describe("config telegram reverse-proxy", () => {
     expect(() => buildTelegramConfig()).toThrow(/TELEGRAM_PROXY_SECRET requires TELEGRAM_API_ROOT/);
   });
 });
+
+describe("config workspace uploadDir", () => {
+  async function loadWorkspaceConfig() {
+    vi.resetModules();
+    const module = await import("../src/config.js");
+    return module.config.workspace;
+  }
+
+  beforeEach(() => {
+    vi.stubEnv("TELEGRAM_BOT_TOKEN", "test-telegram-token");
+    vi.stubEnv("TELEGRAM_ALLOWED_USER_ID", "123456789");
+    vi.stubEnv("OPENCODE_MODEL_PROVIDER", "test-provider");
+    vi.stubEnv("OPENCODE_MODEL_ID", "test-model");
+    vi.stubEnv("WORKSPACE_UPLOAD_DIR", "");
+  });
+
+  it("defaults to 'uploads' when WORKSPACE_UPLOAD_DIR is not set", async () => {
+    const workspace = await loadWorkspaceConfig();
+    expect(workspace.uploadDir).toBe("uploads");
+  });
+
+  it("uses custom value when WORKSPACE_UPLOAD_DIR is set", async () => {
+    vi.stubEnv("WORKSPACE_UPLOAD_DIR", "my-files");
+    const workspace = await loadWorkspaceConfig();
+    expect(workspace.uploadDir).toBe("my-files");
+  });
+
+  it("supports nested path values", async () => {
+    vi.stubEnv("WORKSPACE_UPLOAD_DIR", "workspace/uploads");
+    const workspace = await loadWorkspaceConfig();
+    expect(workspace.uploadDir).toBe("workspace/uploads");
+  });
+});

@@ -11,6 +11,7 @@ import {
   isTextMimeType,
   toDataUri,
 } from "../utils/file-download.js";
+import { saveFileToWorkspace } from "../utils/workspace.js";
 import { processUserPrompt, type ProcessPromptDeps } from "./prompt.js";
 
 const DEFAULT_MEDIA_GROUP_DEBOUNCE_MS = 1_000;
@@ -81,6 +82,10 @@ export interface MediaGroupHandlerDeps extends ProcessPromptDeps {
     deps: ProcessPromptDeps,
     fileParts?: FilePartInput[],
   ) => Promise<boolean>;
+  saveFileToWorkspace?: (
+    filename: string,
+    buffer: Buffer,
+  ) => Promise<string | null>;
 }
 
 export interface MediaGroupHandlerOptions {
@@ -318,11 +323,17 @@ export class MediaGroupAttachmentHandler {
     originalItems: PendingMediaGroupItem[],
   ): Promise<{ promptText: string; fileParts: FilePartInput[] }> {
     const downloadFile = this.deps.downloadFile ?? downloadTelegramFile;
+    const saveFile = this.deps.saveFileToWorkspace ?? saveFileToWorkspace;
     const textSections: string[] = [];
     const fileParts: FilePartInput[] = [];
+    const savedPaths: string[] = [];
 
     for (const item of validItems) {
       const downloadedFile = await downloadFile(item.ctx.api, item.fileId);
+      const savedPath = await saveFile(item.filename, downloadedFile.buffer);
+      if (savedPath) {
+        savedPaths.push(savedPath);
+      }
 
       if (item.kind === "text") {
         const textContent = downloadedFile.buffer.toString("utf-8");
@@ -344,8 +355,12 @@ export class MediaGroupAttachmentHandler {
       .map((item) => item.caption.trim())
       .filter((caption) => caption.length > 0);
 
+    const pathLines = savedPaths.length > 0
+      ? savedPaths.map((p) => `[File saved at: ${p}]`)
+      : [];
+
     return {
-      promptText: [...textSections, ...captions].join("\n\n"),
+      promptText: [...textSections, ...captions, ...pathLines].join("\n\n"),
       fileParts,
     };
   }

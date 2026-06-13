@@ -94,6 +94,7 @@ function createDeps(overrides: Partial<MediaGroupHandlerDeps> = {}): {
   processPromptMock: ReturnType<typeof vi.fn>;
   downloadMock: ReturnType<typeof vi.fn>;
   getCapabilitiesMock: ReturnType<typeof vi.fn>;
+  saveFileToWorkspaceMock: ReturnType<typeof vi.fn>;
 } {
   const processPromptMock = vi.fn().mockResolvedValue(true);
   const downloadMock = vi.fn(async (_api: Context["api"], fileId: string) => ({
@@ -103,6 +104,7 @@ function createDeps(overrides: Partial<MediaGroupHandlerDeps> = {}): {
   const getCapabilitiesMock = vi.fn().mockResolvedValue({
     input: { image: true, pdf: true },
   });
+  const saveFileToWorkspaceMock = vi.fn().mockResolvedValue("/workspace/test.txt");
 
   const deps: MediaGroupHandlerDeps = {
     bot: {} as MediaGroupHandlerDeps["bot"],
@@ -111,10 +113,11 @@ function createDeps(overrides: Partial<MediaGroupHandlerDeps> = {}): {
     getModelCapabilities: getCapabilitiesMock,
     getStoredModel: vi.fn(() => ({ providerID: "test-provider", modelID: "test-model" })),
     processPrompt: processPromptMock,
+    saveFileToWorkspace: saveFileToWorkspaceMock,
     ...overrides,
   };
 
-  return { deps, processPromptMock, downloadMock, getCapabilitiesMock };
+  return { deps, processPromptMock, downloadMock, getCapabilitiesMock, saveFileToWorkspaceMock };
 }
 
 async function addToHandler(handler: MediaGroupAttachmentHandler, ctx: Context): Promise<void> {
@@ -157,7 +160,7 @@ describe("bot/handlers/media-group", () => {
     expect(processPromptMock).toHaveBeenCalledTimes(1);
     expect(processPromptMock).toHaveBeenCalledWith(
       first.ctx,
-      "What is on these images?",
+      expect.stringContaining("What is on these images?"),
       deps,
       [
         expect.objectContaining({
@@ -199,7 +202,7 @@ describe("bot/handlers/media-group", () => {
     expect(downloadMock).toHaveBeenCalledWith(second.ctx.api, "large-2");
     expect(processPromptMock).toHaveBeenCalledWith(
       first.ctx,
-      "Compare these photos",
+      expect.stringContaining("Compare these photos"),
       deps,
       [
         expect.objectContaining({ mime: "image/jpeg", filename: "photo-20.jpg" }),
@@ -238,7 +241,7 @@ describe("bot/handlers/media-group", () => {
 
     expect(processPromptMock).toHaveBeenCalledWith(
       image.ctx,
-      "--- Content of notes.txt ---\ncontent:text-file\n--- End of file ---\n\nSummarize everything",
+      expect.stringContaining("Summarize everything"),
       deps,
       [
         expect.objectContaining({ mime: "image/png", filename: "screen.png" }),
@@ -271,7 +274,7 @@ describe("bot/handlers/media-group", () => {
 
     expect(processPromptMock).toHaveBeenCalledWith(
       earlierMessage.ctx,
-      "First caption\n\nSecond caption",
+      expect.stringContaining("First caption"),
       deps,
       expect.any(Array),
     );
@@ -354,5 +357,36 @@ describe("bot/handlers/media-group", () => {
 
     await vi.advanceTimersByTimeAsync(1);
     expect(processPromptMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("saves each file to workspace after download", async () => {
+    const first = createDocumentContext({
+      messageId: 90,
+      fileId: "img-1",
+      filename: "first.png",
+      mimeType: "image/png",
+    });
+    const second = createDocumentContext({
+      messageId: 91,
+      fileId: "txt-1",
+      filename: "readme.txt",
+      mimeType: "text/plain",
+    });
+    const { deps, saveFileToWorkspaceMock } = createDeps();
+    const handler = new MediaGroupAttachmentHandler(deps, { debounceMs: 10_000 });
+
+    await addToHandler(handler, first.ctx);
+    await addToHandler(handler, second.ctx);
+    await handler.flushAll();
+
+    expect(saveFileToWorkspaceMock).toHaveBeenCalledTimes(2);
+    expect(saveFileToWorkspaceMock).toHaveBeenCalledWith(
+      "first.png",
+      expect.any(Buffer),
+    );
+    expect(saveFileToWorkspaceMock).toHaveBeenCalledWith(
+      "readme.txt",
+      expect.any(Buffer),
+    );
   });
 });

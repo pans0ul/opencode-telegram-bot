@@ -87,6 +87,7 @@ import { handleVoiceMessage } from "./handlers/voice.js";
 import { handleDocumentMessage } from "./handlers/document.js";
 import { createMediaGroupAttachmentMiddleware } from "./handlers/media-group.js";
 import { downloadTelegramFile, toDataUri } from "./utils/file-download.js";
+import { saveFileToWorkspace, diffWorkspaceSnapshot } from "./utils/workspace.js";
 import { reconcileBusyState, setResponseStreamerForReconciliation } from "./utils/busy-reconciliation.js";
 import { finalizeAssistantResponse } from "./utils/finalize-assistant-response.js";
 import { sendTtsResponseForSession } from "./utils/send-tts-response.js";
@@ -466,6 +467,42 @@ async function deliverBackgroundSessionNotification(
       reply_markup: buildBackgroundSessionOpenKeyboard(notification.sessionId, notification.kind),
     },
   );
+}
+
+async function deliverOutputFiles(sessionId: string): Promise<void> {
+  logger.debug(`[Bot] Checking for output files after run: session=${sessionId}`);
+  try {
+    const newFiles = await diffWorkspaceSnapshot(sessionId);
+    logger.debug(`[Bot] Found ${newFiles.length} new output files`);
+
+    for (const filePath of newFiles) {
+      if (!botInstance || !chatIdInstance) {
+        return;
+      }
+
+      try {
+        const stat = await fs.stat(filePath);
+        if (stat.size > 50 * 1024 * 1024) {
+          logger.warn(`[Bot] Output file too large to send: ${filePath} (${stat.size} bytes)`);
+          continue;
+        }
+
+        const fileName = path.basename(filePath);
+        const fileBuffer = await fs.readFile(filePath);
+
+        await botInstance.api.sendDocument(
+          chatIdInstance,
+          new InputFile(fileBuffer, fileName),
+        );
+
+        logger.info(`[Bot] Delivered output file: ${fileName} (${(stat.size / 1024).toFixed(1)}KB)`);
+      } catch (err) {
+        logger.warn(`[Bot] Failed to send output file ${filePath}:`, err);
+      }
+    }
+  } catch (err) {
+    logger.error("[Bot] Error delivering output files:", err);
+  }
 }
 
 type EventStreamItem = {
@@ -971,6 +1008,8 @@ async function ensureEventSubscription(directory: string): Promise<void> {
           );
         }
       }
+
+      void deliverOutputFiles(sessionId);
     } catch (err) {
       logger.error("[Bot] Failed to send session idle footer:", err);
     } finally {
@@ -1457,52 +1496,52 @@ export function createBot(): Bot<Context> {
     const caption = ctx.message.caption || "";
 
     try {
-      // Get the largest photo (last element in array)
       const largestPhoto = photos[photos.length - 1];
 
-      // Check model capabilities
       const storedModel = getStoredModel();
       const capabilities = await getModelCapabilities(storedModel.providerID, storedModel.modelID);
 
-      if (!supportsInput(capabilities, "image")) {
-        logger.warn(
-          `[Bot] Model ${storedModel.providerID}/${storedModel.modelID} doesn't support image input`,
-        );
-        await ctx.reply(t("bot.photo_model_no_image"));
-
-        // Fall back to caption-only if present
-        if (caption.trim().length > 0) {
-          botInstance = bot;
-          chatIdInstance = ctx.chat.id;
-          const promptDeps = { bot, ensureEventSubscription };
-          await processUserPrompt(ctx, caption, promptDeps);
-        }
-        return;
-      }
-
-      // Download photo
       await ctx.reply(t("bot.photo_downloading"));
       const downloadedFile = await downloadTelegramFile(ctx.api, largestPhoto.file_id);
+      const savedPath = await saveFileToWorkspace("photo.jpg", downloadedFile.buffer);
 
-      // Convert to data URI (Telegram always converts photos to JPEG)
-      const dataUri = toDataUri(downloadedFile.buffer, "image/jpeg");
+      const fileParts: FilePartInput[] = [];
 
-      // Create file part
-      const filePart: FilePartInput = {
-        type: "file",
-        mime: "image/jpeg",
-        filename: "photo.jpg",
-        url: dataUri,
-      };
+      if (supportsInput(capabilities, "image")) {
+        const dataUri = toDataUri(downloadedFile.buffer, "image/jpeg");
+        fileParts.push({
+          type: "file",
+          mime: "image/jpeg",
+          filename: "photo.jpg",
+          url: dataUri,
+        });
+        logger.info(`[Bot] Sending photo (${downloadedFile.buffer.length} bytes) with prompt`);
+      } else {
+        logger.warn(
+          `[Bot] Model ${storedModel.providerID}/${storedModel.modelID} doesn't support image input, sending path only`,
+        );
+      }
 
-      logger.info(`[Bot] Sending photo (${downloadedFile.buffer.length} bytes) with prompt`);
+      const pathInfo = savedPath ? `[File saved at: ${savedPath}]` : "";
+      const promptText = caption.trim()
+        ? `${caption}\n\n${pathInfo}`
+        : pathInfo;
+
+      if (!promptText && fileParts.length === 0) {
+        await ctx.reply(t("bot.photo_no_caption"));
+        return;
+      }
 
       botInstance = bot;
       chatIdInstance = ctx.chat.id;
 
-      // Send via processUserPrompt with file part
       const promptDeps = { bot, ensureEventSubscription };
-      await processUserPrompt(ctx, caption, promptDeps, [filePart]);
+      await processUserPrompt(
+        ctx,
+        promptText,
+        promptDeps,
+        fileParts.length > 0 ? fileParts : undefined,
+      );
     } catch (err) {
       logger.error("[Bot] Error handling photo message:", err);
       await ctx.reply(t("bot.photo_download_error"));

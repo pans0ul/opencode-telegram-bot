@@ -2,6 +2,7 @@ import { config } from "../config.js";
 import { t } from "../i18n/index.js";
 import { opencodeClient } from "../opencode/client.js";
 import { logger } from "../utils/logger.js";
+import { buildWorkspaceSystemContext } from "../bot/utils/workspace.js";
 import {
   cleanupScheduledTaskSessionIgnores,
   registerScheduledTaskSessionIgnore,
@@ -541,12 +542,18 @@ export async function executeScheduledTask(
       agent: string;
       model?: { providerID: string; modelID: string };
       variant?: string;
+      system?: string;
     } = {
       sessionID: session.id,
       directory: session.directory,
       parts: [{ type: "text", text: task.prompt }],
       agent: SCHEDULED_TASK_AGENT,
     };
+
+    const workspaceSystemContext = await buildWorkspaceSystemContext();
+    if (workspaceSystemContext) {
+      promptOptions.system = workspaceSystemContext;
+    }
 
     if (task.model.providerID && task.model.modelID) {
       promptOptions.model = {

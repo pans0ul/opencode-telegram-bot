@@ -20,6 +20,7 @@ import { logger } from "../../utils/logger.js";
 import { t } from "../../i18n/index.js";
 import { foregroundSessionState } from "../../scheduled-task/foreground-state.js";
 import { assistantRunState } from "../assistant-run-state.js";
+import { buildWorkspaceSystemContext, takeWorkspaceSnapshot } from "../utils/workspace.js";
 import {
   attachToSession,
   detachAttachedSession,
@@ -244,12 +245,18 @@ export async function processUserPrompt(
       model?: { providerID: string; modelID: string };
       agent?: string;
       variant?: string;
+      system?: string;
     } = {
       sessionID: currentSession.id,
       directory: currentSession.directory,
       parts,
       agent: currentAgent,
     };
+
+    const workspaceSystemContext = await buildWorkspaceSystemContext();
+    if (workspaceSystemContext) {
+      promptOptions.system = workspaceSystemContext;
+    }
 
     // Use stored model (from settings or config)
     if (storedModel.providerID && storedModel.modelID) {
@@ -288,6 +295,8 @@ export async function processUserPrompt(
       configuredModelID: storedModel.modelID,
     });
     setPromptResponseMode(currentSession.id, responseMode);
+
+    await takeWorkspaceSnapshot(currentSession.id);
 
     if (text.trim().length > 0) {
       externalUserInputSuppressionManager.register(currentSession.id, text);
