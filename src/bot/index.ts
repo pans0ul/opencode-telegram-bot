@@ -88,6 +88,7 @@ import { handleDocumentMessage } from "./handlers/document.js";
 import { createMediaGroupAttachmentMiddleware } from "./handlers/media-group.js";
 import { downloadTelegramFile, toDataUri } from "./utils/file-download.js";
 import { saveFileToWorkspace, diffWorkspaceSnapshot } from "./utils/workspace.js";
+import { getThreadSendOptions } from "./scope.js";
 import { reconcileBusyState, setResponseStreamerForReconciliation } from "./utils/busy-reconciliation.js";
 import { finalizeAssistantResponse } from "./utils/finalize-assistant-response.js";
 import { sendTtsResponseForSession } from "./utils/send-tts-response.js";
@@ -131,9 +132,15 @@ import {
 
 let botInstance: Bot<Context> | null = null;
 let chatIdInstance: number | null = null;
+let threadIdInstance: number | null = null;
 let commandsInitialized = false;
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let unsubscribeReadyRestore: (() => void) | null = null;
+
+function setBotContextFromMessage(ctx: Context): void {
+  chatIdInstance = ctx.chat!.id;
+  threadIdInstance = ctx.message?.message_thread_id ?? null;
+}
 
 const TELEGRAM_DOCUMENT_CAPTION_MAX_LENGTH = 1024;
 const RESPONSE_STREAM_THROTTLE_MS = config.bot.responseStreamThrottleMs;
@@ -204,6 +211,7 @@ const toolMessageBatcher = new ToolMessageBatcher({
     const keyboard = getCurrentReplyKeyboard();
 
     await botInstance.api.sendMessage(chatIdInstance, text, {
+      ...getThreadSendOptions(threadIdInstance),
       disable_notification: true,
       ...(keyboard ? { reply_markup: keyboard } : {}),
     });
@@ -231,6 +239,7 @@ const toolMessageBatcher = new ToolMessageBatcher({
       const keyboard = getCurrentReplyKeyboard();
 
       await botInstance.api.sendDocument(chatIdInstance, new InputFile(tempFilePath), {
+        ...getThreadSendOptions(threadIdInstance),
         caption: fileData.caption,
         disable_notification: true,
         ...(keyboard ? { reply_markup: keyboard } : {}),
@@ -367,6 +376,7 @@ const toolCallStreamer = new ToolCallStreamer({
     }
 
     const sentMessage = await botInstance.api.sendMessage(chatIdInstance, text, {
+      ...getThreadSendOptions(threadIdInstance),
       disable_notification: true,
     });
 
@@ -464,6 +474,7 @@ async function deliverBackgroundSessionNotification(
     chatIdInstance,
     formatBackgroundSessionNotification(notification),
     {
+      ...getThreadSendOptions(threadIdInstance),
       reply_markup: buildBackgroundSessionOpenKeyboard(notification.sessionId, notification.kind),
     },
   );
@@ -493,6 +504,7 @@ async function deliverOutputFiles(sessionId: string): Promise<void> {
         await botInstance.api.sendDocument(
           chatIdInstance,
           new InputFile(fileBuffer, fileName),
+          getThreadSendOptions(threadIdInstance),
         );
 
         logger.info(`[Bot] Delivered output file: ${fileName} (${(stat.size / 1024).toFixed(1)}KB)`);
@@ -1003,6 +1015,7 @@ async function ensureEventSubscription(directory: string): Promise<void> {
               elapsedMs: Date.now() - completedRun.startedAt,
             }),
             {
+              ...getThreadSendOptions(threadIdInstance),
               ...(keyboard ? { reply_markup: keyboard } : {}),
             },
           );
@@ -1174,6 +1187,7 @@ export function createBot(): Bot<Context> {
   const bot = new Bot(config.telegram.token, botOptions);
   botInstance = bot;
   chatIdInstance = config.telegram.allowedUserId;
+  threadIdInstance = null;
 
   unsubscribeReadyRestore?.();
   unsubscribeReadyRestore = opencodeReadyLifecycle.onReady(async (reason) => {
@@ -1292,6 +1306,7 @@ export function createBot(): Bot<Context> {
     if (ctx.chat) {
       botInstance = bot;
       chatIdInstance = ctx.chat.id;
+      threadIdInstance = ctx.callbackQuery?.message?.message_thread_id ?? null;
     }
 
     try {
@@ -1471,14 +1486,14 @@ export function createBot(): Bot<Context> {
   bot.on("message:voice", async (ctx) => {
     logger.debug(`[Bot] Received voice message, chatId=${ctx.chat.id}`);
     botInstance = bot;
-    chatIdInstance = ctx.chat.id;
+    setBotContextFromMessage(ctx);
     await handleVoiceMessage(ctx, voicePromptDeps);
   });
 
   bot.on("message:audio", async (ctx) => {
     logger.debug(`[Bot] Received audio message, chatId=${ctx.chat.id}`);
     botInstance = bot;
-    chatIdInstance = ctx.chat.id;
+    setBotContextFromMessage(ctx);
     await handleVoiceMessage(ctx, voicePromptDeps);
   });
 
@@ -1533,7 +1548,7 @@ export function createBot(): Bot<Context> {
       }
 
       botInstance = bot;
-      chatIdInstance = ctx.chat.id;
+      setBotContextFromMessage(ctx);
 
       const promptDeps = { bot, ensureEventSubscription };
       await processUserPrompt(
@@ -1552,7 +1567,7 @@ export function createBot(): Bot<Context> {
   bot.on("message:document", async (ctx) => {
     logger.debug(`[Bot] Received document message, chatId=${ctx.chat.id}`);
     botInstance = bot;
-    chatIdInstance = ctx.chat.id;
+    setBotContextFromMessage(ctx);
     const deps = { bot, ensureEventSubscription };
     await handleDocumentMessage(ctx, deps);
   });
@@ -1564,7 +1579,7 @@ export function createBot(): Bot<Context> {
     }
 
     botInstance = bot;
-    chatIdInstance = ctx.chat.id;
+    setBotContextFromMessage(ctx);
 
     if (text.startsWith("/")) {
       return;
@@ -1639,4 +1654,5 @@ export function cleanupBotRuntime(reason: string): void {
 
   botInstance = null;
   chatIdInstance = null;
+  threadIdInstance = null;
 }

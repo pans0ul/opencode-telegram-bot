@@ -82,6 +82,20 @@ export const en = {
   "background.permission_asked": "🔐 Background session requested permissions: {session}",
   "background.open_session_button": "Open session",
   "bot.unknown_command": "⚠️ Unknown command: {command}. Use /help to see available commands.",
+
+  "topic.general_prompts_disabled":
+    "💡 This is the control topic. Use /new to create a session topic, or /sessions to open an existing one.",
+  "topic.unbound_topic":
+    "⚠️ This topic is not bound to a session. Use /new or /sessions in the General topic to create or open a session.",
+  "topic.created": "✅ Created topic for session: {title}",
+  "topic.create_error": "🔴 Failed to create forum topic: {error}",
+  "topic.binding_switched": "✅ Switched to session: {title}",
+  "topic.already_bound":
+    "⚠️ This topic is already bound to a session. Use /sessions to select a different session.",
+  "topic.not_forum":
+    "⚠️ This group does not have forum topics enabled. Enable Topics in group settings to use parallel sessions.",
+  "topic.topic_link":
+    "📎 [{title}](https://t.me/c/{chatIdPart}/{threadId})",
   "bot.photo_downloading": "⏳ Downloading photo...",
   "bot.photo_too_large": "⚠️ Photo is too large (max {maxSizeMb}MB)",
   "bot.photo_model_no_image": "⚠️ Current model doesn't support image input. Sending text only.",

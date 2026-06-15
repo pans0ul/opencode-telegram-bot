@@ -73,6 +73,20 @@ export const zh: I18nDictionary = {
   "background.permission_asked": "🔐 后台会话请求了权限：{session}",
   "background.open_session_button": "打开会话",
   "bot.unknown_command": "⚠️ 未知命令：{command}。使用 /help 查看可用命令。",
+
+  "topic.general_prompts_disabled":
+    "💡 这是控制话题。使用 /new 创建会话话题，或使用 /sessions 打开现有会话。",
+  "topic.unbound_topic":
+    "⚠️ 该话题未绑定会话。请在综合话题中使用 /new 或 /sessions 创建或打开会话。",
+  "topic.created": "✅ 已为会话创建话题：{title}",
+  "topic.create_error": "🔴 创建论坛话题失败：{error}",
+  "topic.binding_switched": "✅ 已切换到会话：{title}",
+  "topic.already_bound":
+    "⚠️ 该话题已绑定一个会话。使用 /sessions 选择其他会话。",
+  "topic.not_forum":
+    "⚠️ 该群组未启用论坛话题。请在群组设置中启用话题以使用并行会话。",
+  "topic.topic_link":
+    "📎 [{title}](https://t.me/c/{chatIdPart}/{threadId})",
   "bot.photo_downloading": "⏳ 正在下载照片...",
   "bot.photo_too_large": "⚠️ 照片过大（最大 {maxSizeMb}MB）",
   "bot.photo_model_no_image": "⚠️ 当前模型不支持图像输入。将仅发送文本。",

@@ -32,6 +32,7 @@ import { externalUserInputSuppressionManager } from "../../external-input/suppre
 /** Module-level references for async callbacks that don't have ctx. */
 let botInstance: Bot<Context> | null = null;
 let chatIdInstance: number | null = null;
+let threadIdInstance: number | null = null;
 const promptResponseModes = new Map<string, PromptResponseMode>();
 
 export type PromptResponseMode = "text_only" | "text_and_tts";
@@ -46,6 +47,10 @@ export function getPromptBotInstance(): Bot<Context> | null {
 
 export function getPromptChatId(): number | null {
   return chatIdInstance;
+}
+
+export function getPromptThreadId(): number | null {
+  return threadIdInstance;
 }
 
 export function setPromptResponseMode(sessionId: string, responseMode: PromptResponseMode): void {
@@ -138,6 +143,7 @@ export async function processUserPrompt(
 
   botInstance = bot;
   chatIdInstance = ctx.chat!.id;
+  threadIdInstance = ctx.message?.message_thread_id ?? null;
 
   let currentSession = getCurrentSession();
   let createdNewSession = false;
