@@ -88,7 +88,8 @@ import { handleDocumentMessage } from "./handlers/document.js";
 import { createMediaGroupAttachmentMiddleware } from "./handlers/media-group.js";
 import { downloadTelegramFile, toDataUri } from "./utils/file-download.js";
 import { saveFileToWorkspace, diffWorkspaceSnapshot } from "./utils/workspace.js";
-import { getThreadSendOptions } from "./scope.js";
+import { getThreadSendOptions, isForumChat, isGroupGeneralControlScope } from "./scope.js";
+import { topicManager } from "../topic/manager.js";
 import { reconcileBusyState, setResponseStreamerForReconciliation } from "./utils/busy-reconciliation.js";
 import { finalizeAssistantResponse } from "./utils/finalize-assistant-response.js";
 import { sendTtsResponseForSession } from "./utils/send-tts-response.js";
@@ -1482,9 +1483,14 @@ export function createBot(): Bot<Context> {
 
   // Voice and audio message handlers (STT transcription -> prompt)
   const voicePromptDeps = { bot, ensureEventSubscription };
-
-  bot.on("message:voice", async (ctx) => {
+bot.on("message:voice", async (ctx) => {
     logger.debug(`[Bot] Received voice message, chatId=${ctx.chat.id}`);
+
+    if (isGroupGeneralControlScope(ctx)) {
+      await ctx.reply(t("topic.general_prompts_disabled"));
+      return;
+    }
+
     botInstance = bot;
     setBotContextFromMessage(ctx);
     await handleVoiceMessage(ctx, voicePromptDeps);
@@ -1492,16 +1498,26 @@ export function createBot(): Bot<Context> {
 
   bot.on("message:audio", async (ctx) => {
     logger.debug(`[Bot] Received audio message, chatId=${ctx.chat.id}`);
+
+    if (isGroupGeneralControlScope(ctx)) {
+      await ctx.reply(t("topic.general_prompts_disabled"));
+      return;
+    }
+
     botInstance = bot;
     setBotContextFromMessage(ctx);
     await handleVoiceMessage(ctx, voicePromptDeps);
   });
-
   bot.on("message", createMediaGroupAttachmentMiddleware({ bot, ensureEventSubscription }));
 
   // Photo message handler
   bot.on("message:photo", async (ctx) => {
     logger.debug(`[Bot] Received photo message, chatId=${ctx.chat.id}`);
+
+    if (isGroupGeneralControlScope(ctx)) {
+      await ctx.reply(t("topic.general_prompts_disabled"));
+      return;
+    }
 
     const photos = ctx.message?.photo;
     if (!photos || photos.length === 0) {
@@ -1562,10 +1578,15 @@ export function createBot(): Bot<Context> {
       await ctx.reply(t("bot.photo_download_error"));
     }
   });
-
-  // Document message handler (PDF and text files)
+// Document message handler (PDF and text files)
   bot.on("message:document", async (ctx) => {
     logger.debug(`[Bot] Received document message, chatId=${ctx.chat.id}`);
+
+    if (isGroupGeneralControlScope(ctx)) {
+      await ctx.reply(t("topic.general_prompts_disabled"));
+      return;
+    }
+
     botInstance = bot;
     setBotContextFromMessage(ctx);
     const deps = { bot, ensureEventSubscription };
@@ -1582,6 +1603,16 @@ export function createBot(): Bot<Context> {
     setBotContextFromMessage(ctx);
 
     if (text.startsWith("/")) {
+      return;
+    }
+
+    if (isGroupGeneralControlScope(ctx)) {
+      await ctx.reply(t("topic.general_prompts_disabled"));
+      return;
+    }
+
+    if (isForumChat(ctx) && !topicManager.getBinding(ctx.chat!.id, ctx.message?.message_thread_id ?? 0)) {
+      await ctx.reply(t("topic.unbound_topic"));
       return;
     }
 

@@ -28,6 +28,8 @@ import {
   markAttachedSessionIdle,
 } from "../../attach/service.js";
 import { externalUserInputSuppressionManager } from "../../external-input/suppression.js";
+import { isForumChat } from "../scope.js";
+import { topicManager } from "../../topic/manager.js";
 
 /** Module-level references for async callbacks that don't have ctx. */
 let botInstance: Bot<Context> | null = null;
@@ -147,6 +149,19 @@ export async function processUserPrompt(
 
   let currentSession = getCurrentSession();
   let createdNewSession = false;
+
+  const topicBinding = isForumChat(ctx)
+    ? topicManager.getBinding(ctx.chat!.id, ctx.message?.message_thread_id ?? 0)
+    : null;
+
+  if (topicBinding && topicBinding.status === "active") {
+    currentSession = {
+      id: topicBinding.sessionId,
+      title: "",
+      directory: topicBinding.directory,
+    };
+    setCurrentSession(currentSession);
+  }
 
   if (currentSession && currentSession.directory !== currentProject.worktree) {
     logger.warn(
