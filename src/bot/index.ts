@@ -143,6 +143,17 @@ function setBotContextFromMessage(ctx: Context): void {
   threadIdInstance = ctx.message?.message_thread_id ?? null;
 }
 
+function getSessionRouteTarget(sessionId: string): { chatId: number; threadId: number | null } | null {
+  const topicRoute = topicManager.getSessionRouteTarget(sessionId);
+  if (topicRoute) {
+    return topicRoute;
+  }
+  if (chatIdInstance) {
+    return { chatId: chatIdInstance, threadId: threadIdInstance };
+  }
+  return null;
+}
+
 const TELEGRAM_DOCUMENT_CAPTION_MAX_LENGTH = 1024;
 const RESPONSE_STREAM_THROTTLE_MS = config.bot.responseStreamThrottleMs;
 const RESPONSE_STREAMING_MODE = config.bot.responseStreamingMode;
@@ -200,7 +211,8 @@ function enqueueSessionCompletionTask(sessionId: string, task: () => Promise<voi
 
 const toolMessageBatcher = new ToolMessageBatcher({
   sendText: async (sessionId, text) => {
-    if (!botInstance || !chatIdInstance) {
+    const route = getSessionRouteTarget(sessionId);
+    if (!botInstance || !route) {
       return;
     }
 
@@ -211,14 +223,15 @@ const toolMessageBatcher = new ToolMessageBatcher({
 
     const keyboard = getCurrentReplyKeyboard();
 
-    await botInstance.api.sendMessage(chatIdInstance, text, {
-      ...getThreadSendOptions(threadIdInstance),
+    await botInstance.api.sendMessage(route.chatId, text, {
+      ...getThreadSendOptions(route.threadId),
       disable_notification: true,
       ...(keyboard ? { reply_markup: keyboard } : {}),
     });
   },
   sendFile: async (sessionId, fileData) => {
-    if (!botInstance || !chatIdInstance) {
+    const route = getSessionRouteTarget(sessionId);
+    if (!botInstance || !route) {
       return;
     }
 
@@ -239,8 +252,8 @@ const toolMessageBatcher = new ToolMessageBatcher({
 
       const keyboard = getCurrentReplyKeyboard();
 
-      await botInstance.api.sendDocument(chatIdInstance, new InputFile(tempFilePath), {
-        ...getThreadSendOptions(threadIdInstance),
+      await botInstance.api.sendDocument(route.chatId, new InputFile(tempFilePath), {
+        ...getThreadSendOptions(route.threadId),
         caption: fileData.caption,
         disable_notification: true,
         ...(keyboard ? { reply_markup: keyboard } : {}),
@@ -367,7 +380,8 @@ setResponseStreamerForReconciliation(responseStreamer);
 const toolCallStreamer = new ToolCallStreamer({
   throttleMs: RESPONSE_STREAM_THROTTLE_MS,
   sendText: async (sessionId, text) => {
-    if (!botInstance || !chatIdInstance || chatIdInstance <= 0) {
+    const route = getSessionRouteTarget(sessionId);
+    if (!botInstance || !route) {
       throw new Error("Bot context missing for tool stream send");
     }
 
@@ -376,8 +390,8 @@ const toolCallStreamer = new ToolCallStreamer({
       throw new Error(`Tool stream session mismatch for send: ${sessionId}`);
     }
 
-    const sentMessage = await botInstance.api.sendMessage(chatIdInstance, text, {
-      ...getThreadSendOptions(threadIdInstance),
+    const sentMessage = await botInstance.api.sendMessage(route.chatId, text, {
+      ...getThreadSendOptions(route.threadId),
       disable_notification: true,
     });
 
@@ -467,15 +481,16 @@ function formatBackgroundSessionNotification(notification: BackgroundSessionNoti
 async function deliverBackgroundSessionNotification(
   notification: BackgroundSessionNotification,
 ): Promise<void> {
-  if (!botInstance || !chatIdInstance) {
+  const route = getSessionRouteTarget(notification.sessionId);
+  if (!botInstance || !route) {
     return;
   }
 
   await botInstance.api.sendMessage(
-    chatIdInstance,
+    route.chatId,
     formatBackgroundSessionNotification(notification),
     {
-      ...getThreadSendOptions(threadIdInstance),
+      ...getThreadSendOptions(route.threadId),
       reply_markup: buildBackgroundSessionOpenKeyboard(notification.sessionId, notification.kind),
     },
   );
@@ -487,8 +502,10 @@ async function deliverOutputFiles(sessionId: string): Promise<void> {
     const newFiles = await diffWorkspaceSnapshot(sessionId);
     logger.debug(`[Bot] Found ${newFiles.length} new output files`);
 
+    const route = getSessionRouteTarget(sessionId);
+
     for (const filePath of newFiles) {
-      if (!botInstance || !chatIdInstance) {
+      if (!botInstance || !route) {
         return;
       }
 
@@ -503,9 +520,9 @@ async function deliverOutputFiles(sessionId: string): Promise<void> {
         const fileBuffer = await fs.readFile(filePath);
 
         await botInstance.api.sendDocument(
-          chatIdInstance,
+          route.chatId,
           new InputFile(fileBuffer, fileName),
-          getThreadSendOptions(threadIdInstance),
+          getThreadSendOptions(route.threadId),
         );
 
         logger.info(`[Bot] Delivered output file: ${fileName} (${(stat.size / 1024).toFixed(1)}KB)`);
@@ -602,7 +619,8 @@ async function ensureEventSubscription(directory: string): Promise<void> {
   });
 
   summaryAggregator.setOnPartial((sessionId, messageId, messageText) => {
-    if (!botInstance || !chatIdInstance) {
+    const route = getSessionRouteTarget(sessionId);
+    if (!botInstance || !route) {
       return;
     }
 
@@ -626,8 +644,9 @@ async function ensureEventSubscription(directory: string): Promise<void> {
 
   summaryAggregator.setOnComplete((sessionId, messageId, messageText, completionInfo) => {
     void enqueueSessionCompletionTask(sessionId, async () => {
-      if (!botInstance || !chatIdInstance) {
-        logger.error("Bot or chat ID not available for sending message");
+      const route = getSessionRouteTarget(sessionId);
+      if (!botInstance || !route) {
+        logger.error("Bot or route target not available for sending message");
         clearPromptResponseMode(sessionId);
         responseStreamer.clearMessage(sessionId, messageId, "bot_context_missing");
         toolCallStreamer.clearSession(sessionId, "bot_context_missing");
@@ -648,7 +667,8 @@ async function ensureEventSubscription(directory: string): Promise<void> {
       }
 
       const botApi = botInstance.api;
-      const chatId = chatIdInstance;
+      const chatId = route.chatId;
+      const threadId = route.threadId;
 
       try {
         assistantRunState.markResponseCompleted(sessionId, {
@@ -671,11 +691,15 @@ async function ensureEventSubscription(directory: string): Promise<void> {
           renderFinalParts: (text) => renderAssistantFinalPartsSafe(text),
           getReplyKeyboard: getCurrentReplyKeyboard,
           sendRenderedPart: async (part, options) => {
+            const sendOptions = {
+              ...options,
+              ...getThreadSendOptions(threadId),
+            } as Parameters<typeof sendBotText>[0]["options"];
             await sendRenderedBotPart({
               api: botApi,
               chatId,
               part,
-              options: options as Parameters<typeof sendBotText>[0]["options"],
+              options: sendOptions,
             });
           },
         });
@@ -702,19 +726,21 @@ async function ensureEventSubscription(directory: string): Promise<void> {
 
   summaryAggregator.setOnExternalUserInput(async (sessionId, _messageId, messageText) => {
     void enqueueSessionCompletionTask(sessionId, async () => {
-      if (!botInstance || !chatIdInstance) {
+      const route = getSessionRouteTarget(sessionId);
+      if (!botInstance || !route) {
         return;
       }
 
       try {
         await deliverExternalUserInputNotification({
           api: botInstance.api,
-          chatId: chatIdInstance,
+          chatId: route.chatId,
           currentSessionId: getCurrentSession()?.id ?? null,
           sessionId,
           text: messageText,
           consumeSuppressedInput: (incomingSessionId, incomingText) =>
             externalUserInputSuppressionManager.consume(incomingSessionId, incomingText),
+          threadId: route.threadId,
         });
       } catch (err) {
         logger.error("[Bot] Failed to deliver external user input to Telegram:", err);
@@ -723,8 +749,9 @@ async function ensureEventSubscription(directory: string): Promise<void> {
   });
 
   summaryAggregator.setOnTool(async (toolInfo) => {
-    if (!botInstance || !chatIdInstance) {
-      logger.error("Bot or chat ID not available for sending tool notification");
+    const route = getSessionRouteTarget(toolInfo.sessionId);
+    if (!botInstance || !route) {
+      logger.error("Bot or route target not available for sending tool notification");
       return;
     }
 
@@ -756,7 +783,7 @@ async function ensureEventSubscription(directory: string): Promise<void> {
   });
 
   summaryAggregator.setOnSubagent(async (sessionId, subagents) => {
-    if (!botInstance || !chatIdInstance) {
+    if (!botInstance || !getSessionRouteTarget(sessionId)) {
       return;
     }
 
@@ -787,8 +814,8 @@ async function ensureEventSubscription(directory: string): Promise<void> {
   });
 
   summaryAggregator.setOnToolFile(async (fileInfo) => {
-    if (!botInstance || !chatIdInstance) {
-      logger.error("Bot or chat ID not available for sending file");
+    if (!botInstance || !getSessionRouteTarget(fileInfo.sessionId)) {
+      logger.error("Bot or route target not available for sending file");
       return;
     }
 
@@ -982,7 +1009,8 @@ async function ensureEventSubscription(directory: string): Promise<void> {
     const completedRun = assistantRunState.finishRun(sessionId, "session_idle");
     clearPromptResponseMode(sessionId);
 
-    if (!botInstance || !chatIdInstance) {
+    const route = getSessionRouteTarget(sessionId);
+    if (!botInstance || !route) {
       foregroundSessionState.markIdle(sessionId);
       return;
     }
@@ -1008,7 +1036,7 @@ async function ensureEventSubscription(directory: string): Promise<void> {
         if (agent && providerID && modelID) {
           const keyboard = getCurrentReplyKeyboard();
           await botInstance.api.sendMessage(
-            chatIdInstance,
+            route.chatId,
             formatAssistantRunFooter({
               agent,
               providerID,
@@ -1016,7 +1044,7 @@ async function ensureEventSubscription(directory: string): Promise<void> {
               elapsedMs: Date.now() - completedRun.startedAt,
             }),
             {
-              ...getThreadSendOptions(threadIdInstance),
+              ...getThreadSendOptions(route.threadId),
               ...(keyboard ? { reply_markup: keyboard } : {}),
             },
           );

@@ -3,6 +3,8 @@ import { t } from "../../i18n/index.js";
 import { escapePlainTextForTelegramMarkdownV2 } from "../../summary/formatter.js";
 import { sendBotText } from "./telegram-text.js";
 
+import { getThreadSendOptions } from "../scope.js";
+
 type SendMessageApi = Pick<Api<RawApi>, "sendMessage">;
 
 const EXTERNAL_USER_INPUT_MAX_DISPLAY_LENGTH = 2000;
@@ -19,6 +21,7 @@ interface DeliverExternalUserInputParams {
   sessionId: string;
   text: string;
   consumeSuppressedInput: (sessionId: string, text: string) => boolean;
+  threadId?: number | null;
 }
 
 function normalizeExternalUserInputText(text: string): string {
@@ -70,6 +73,7 @@ export async function deliverExternalUserInputNotification({
   sessionId,
   text,
   consumeSuppressedInput,
+  threadId,
 }: DeliverExternalUserInputParams): Promise<boolean> {
   const notification = buildExternalUserInputNotification(text);
   if (!notification || currentSessionId !== sessionId) {
@@ -86,6 +90,7 @@ export async function deliverExternalUserInputNotification({
     text: notification.text,
     rawFallbackText: notification.rawFallbackText,
     format: "markdown_v2",
+    options: threadId ? { ...getThreadSendOptions(threadId) } : undefined,
   });
 
   return true;
