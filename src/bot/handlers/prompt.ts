@@ -30,6 +30,7 @@ import {
 import { externalUserInputSuppressionManager } from "../../external-input/suppression.js";
 import { isForumChat } from "../scope.js";
 import { topicManager } from "../../topic/manager.js";
+import { formatTopicTitle } from "../../topic/title-format.js";
 
 /** Module-level references for async callbacks that don't have ctx. */
 let botInstance: Bot<Context> | null = null;
@@ -163,6 +164,9 @@ export async function processUserPrompt(
     setCurrentSession(currentSession);
   }
 
+  const forumThreadId = isForumChat(ctx) ? (ctx.message?.message_thread_id ?? 0) : null;
+  const needsForumBinding = forumThreadId !== null && forumThreadId !== 0 && !topicBinding;
+
   if (currentSession && currentSession.directory !== currentProject.worktree) {
     logger.warn(
       `[Bot] Session/project mismatch detected. sessionDirectory=${currentSession.directory}, projectDirectory=${currentProject.worktree}. Resetting session context.`,
@@ -210,6 +214,28 @@ export async function processUserPrompt(
     ensureEventSubscription,
     messageThreadId: ctx.message?.message_thread_id ?? null,
   });
+
+  if (needsForumBinding && forumThreadId && ctx.chat) {
+    topicManager.registerBinding({
+      scopeKey: `${ctx.chat.id}:${forumThreadId}`,
+      chatId: ctx.chat.id,
+      threadId: forumThreadId,
+      sessionId: currentSession.id,
+      directory: currentSession.directory,
+      status: "active",
+    });
+
+    try {
+      const topicTitle = formatTopicTitle(currentSession.title, currentSession.id);
+      await ctx.api.editForumTopic(ctx.chat.id, forumThreadId, { name: topicTitle });
+    } catch (err) {
+      logger.warn(`[Bot] Failed to update topic title for auto-bind: ${err}`);
+    }
+
+    if (!createdNewSession) {
+      await ctx.reply(t("topic.auto_bind_restored"));
+    }
+  }
 
   if (createdNewSession) {
     const currentAgent = await resolveProjectAgent(getStoredAgent());

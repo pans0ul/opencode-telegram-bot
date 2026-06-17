@@ -78,6 +78,7 @@ export const zh: I18nDictionary = {
     "💡 这是控制话题。使用 /new 创建会话话题，或使用 /sessions 打开现有会话。",
   "topic.unbound_topic":
     "⚠️ 该话题未绑定会话。请在综合话题中使用 /new 或 /sessions 创建或打开会话。",
+  "topic.auto_bind_restored": "✅ 已恢复该话题的会话绑定。",
   "topic.created": "✅ 已为会话创建话题：{title}",
   "topic.create_error": "🔴 创建论坛话题失败：{error}",
   "topic.binding_switched": "✅ 已切换到会话：{title}",

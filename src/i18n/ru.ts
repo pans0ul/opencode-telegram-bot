@@ -86,6 +86,7 @@ export const ru: I18nDictionary = {
     "💡 This is the control topic. Use /new to create a session topic, or /sessions to open an existing one.",
   "topic.unbound_topic":
     "⚠️ This topic is not bound to a session. Use /new or /sessions in the General topic to create or open a session.",
+  "topic.auto_bind_restored": "✅ Restored session binding for this topic.",
   "topic.created": "✅ Created topic for session: {title}",
   "topic.create_error": "🔴 Failed to create forum topic: {error}",
   "topic.binding_switched": "✅ Switched to session: {title}",

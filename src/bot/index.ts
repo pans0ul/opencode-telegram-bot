@@ -80,7 +80,7 @@ import { safeBackgroundTask } from "../utils/safe-background-task.js";
 import { withTelegramRateLimitRetry } from "../utils/telegram-rate-limit-retry.js";
 import { pinnedMessageManager } from "../pinned/manager.js";
 import { t } from "../i18n/index.js";
-import { getCurrentProject } from "../settings/manager.js";
+import { getCurrentProject, loadAllTopicBindings } from "../settings/manager.js";
 import { createTelegramBotOptions } from "./telegram-client-options.js";
 import { clearPromptResponseMode, processUserPrompt } from "./handlers/prompt.js";
 import { handleVoiceMessage } from "./handlers/voice.js";
@@ -88,7 +88,7 @@ import { handleDocumentMessage } from "./handlers/document.js";
 import { createMediaGroupAttachmentMiddleware } from "./handlers/media-group.js";
 import { downloadTelegramFile, toDataUri } from "./utils/file-download.js";
 import { saveFileToWorkspace, diffWorkspaceSnapshot } from "./utils/workspace.js";
-import { getThreadSendOptions, isForumChat, isGroupGeneralControlScope } from "./scope.js";
+import { getThreadSendOptions, isGroupGeneralControlScope } from "./scope.js";
 import { topicManager } from "../topic/manager.js";
 import { reconcileBusyState, setResponseStreamerForReconciliation } from "./utils/busy-reconciliation.js";
 import { finalizeAssistantResponse } from "./utils/finalize-assistant-response.js";
@@ -1202,12 +1202,33 @@ async function ensureEventSubscription(directory: string): Promise<void> {
   });
 }
 
+function restoreTopicBindings(): void {
+  const bindings = loadAllTopicBindings();
+  for (const binding of bindings) {
+    if (binding.status === "active") {
+      topicManager.registerBinding({
+        scopeKey: binding.scopeKey,
+        chatId: binding.chatId,
+        threadId: binding.threadId,
+        sessionId: binding.sessionId,
+        directory: binding.directory,
+        status: binding.status,
+      });
+    }
+  }
+  if (bindings.length > 0) {
+    logger.info(`[Bot] Restored ${bindings.length} topic bindings from settings`);
+  }
+}
+
 export function createBot(): Bot<Context> {
   clearAllInteractionState("bot_startup");
   sessionCompletionTasks.clear();
   attachManager.clear("bot_startup");
   assistantRunState.clearAll("bot_startup");
   backgroundSessionTracker.clear();
+
+  restoreTopicBindings();
 
   if (heartbeatTimer) {
     clearInterval(heartbeatTimer);
@@ -1639,11 +1660,6 @@ bot.on("message:voice", async (ctx) => {
 
     if (isGroupGeneralControlScope(ctx)) {
       await ctx.reply(t("topic.general_prompts_disabled"));
-      return;
-    }
-
-    if (isForumChat(ctx) && !topicManager.getBinding(ctx.chat!.id, ctx.message?.message_thread_id ?? 0)) {
-      await ctx.reply(t("topic.unbound_topic"));
       return;
     }
 

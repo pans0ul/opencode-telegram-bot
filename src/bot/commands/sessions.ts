@@ -310,7 +310,8 @@ async function selectSessionById(
         return;
       }
 
-      const topicTitle = formatTopicTitle(session.title || `Session ${session.id.slice(0, 8)}`);
+      const sessionTitle = session.title || `Session ${session.id.slice(0, 8)}`;
+      const topicTitle = formatTopicTitle(sessionTitle, session.id);
       let threadId: number;
 
       try {

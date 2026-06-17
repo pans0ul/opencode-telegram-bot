@@ -1,4 +1,5 @@
 import { buildScopeKey, type ConversationScope } from "../bot/scope.js";
+import { setTopicBinding, clearTopicBinding } from "../settings/manager.js";
 import { logger } from "../utils/logger.js";
 import type { TopicSessionBinding, TopicSessionStatus } from "./constants.js";
 
@@ -29,6 +30,8 @@ class TopicManager {
     this.bindingsByScope.set(scopeKey, binding);
     this.bindingsBySession.set(input.sessionId, binding);
     this.sessionToScope.set(input.sessionId, scopeKey);
+
+    setTopicBinding(input.chatId, input.threadId, binding);
 
     logger.info(
       `[TopicManager] Registered binding: scope=${scopeKey}, session=${input.sessionId}, directory=${input.directory}`,
@@ -93,6 +96,8 @@ class TopicManager {
     this.bindingsBySession.delete(binding.sessionId);
     this.sessionToScope.delete(binding.sessionId);
 
+    clearTopicBinding(chatId, threadId);
+
     logger.info(
       `[TopicManager] Removed binding: scope=${scopeKey}, session=${binding.sessionId}`,
     );
@@ -147,6 +152,9 @@ class TopicManager {
   }
 
   clear(): void {
+    for (const binding of this.bindingsByScope.values()) {
+      clearTopicBinding(binding.chatId, binding.threadId);
+    }
     this.bindingsByScope.clear();
     this.bindingsBySession.clear();
     this.sessionToScope.clear();

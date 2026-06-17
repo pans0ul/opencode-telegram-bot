@@ -79,7 +79,7 @@ async function handleForumNewSession(
 ) {
   const chatId = ctx.chat!.id;
   const sessionTitle = sessionInfo.title || `Session ${sessionInfo.id.slice(0, 8)}`;
-  const topicTitle = formatTopicTitle(sessionTitle);
+  const topicTitle = formatTopicTitle(sessionTitle, sessionInfo.id);
 
   let threadId: number;
 
