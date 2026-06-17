@@ -24,9 +24,11 @@ import {
 class PinnedMessageManager {
   private api: Api | null = null;
   private chatId: number | null = null;
+  private messageThreadId: number | null = null;
   private state: PinnedMessageState = {
     messageId: null,
     chatId: null,
+    messageThreadId: null,
     sessionId: null,
     sessionTitle: t("pinned.default_session_title"),
     attachActive: false,
@@ -48,14 +50,21 @@ class PinnedMessageManager {
   private pendingForceUpdate = false;
   private lastRenderedMessageText: string | null = null;
 
+  private threadSendOptions(): Record<string, unknown> {
+    if (this.messageThreadId) {
+      return { message_thread_id: this.messageThreadId };
+    }
+    return {};
+  }
+
   /**
    * Initialize manager with bot API and chat ID
    */
-  initialize(api: Api, chatId: number): void {
+  initialize(api: Api, chatId: number, messageThreadId?: number | null): void {
     this.api = api;
     this.chatId = chatId;
+    this.messageThreadId = messageThreadId ?? null;
 
-    // Restore pinned message ID from settings
     const savedMessageId = getPinnedMessageId();
     if (savedMessageId) {
       this.state.messageId = savedMessageId;
@@ -754,18 +763,16 @@ class PinnedMessageManager {
     try {
       const text = this.formatMessage();
 
-      // Send new message
-      const sentMessage = await this.api.sendMessage(this.chatId, text);
+      const sentMessage = await this.api.sendMessage(this.chatId, text, this.threadSendOptions());
 
       this.state.messageId = sentMessage.message_id;
       this.state.chatId = this.chatId;
+      this.state.messageThreadId = this.messageThreadId;
       this.state.lastUpdated = Date.now();
       this.lastRenderedMessageText = text;
 
-      // Save to settings for persistence
       setPinnedMessageId(sentMessage.message_id);
 
-      // Pin the message (silently)
       await this.api.pinChatMessage(this.chatId, sentMessage.message_id, {
         disable_notification: true,
       });
@@ -866,8 +873,11 @@ class PinnedMessageManager {
     }
 
     try {
-      // Unpin all messages (ensures clean state)
-      await this.api.unpinAllChatMessages(this.chatId).catch(() => {});
+      if (this.state.messageId) {
+        await this.api.unpinChatMessage(this.chatId, this.state.messageId).catch(() => {});
+      } else {
+        await this.api.unpinAllChatMessages(this.chatId).catch(() => {});
+      }
 
       this.state.messageId = null;
       this.lastRenderedMessageText = null;
@@ -920,8 +930,11 @@ class PinnedMessageManager {
     }
 
     try {
-      // Unpin all messages
-      await this.api.unpinAllChatMessages(this.chatId).catch(() => {});
+      if (this.state.messageId) {
+        await this.api.unpinChatMessage(this.chatId, this.state.messageId).catch(() => {});
+      } else {
+        await this.api.unpinAllChatMessages(this.chatId).catch(() => {});
+      }
 
       // Reset state
       this.state.messageId = null;

@@ -209,16 +209,18 @@ describe("bot/handlers/prompt", () => {
     const handled = await processUserPrompt(createContext(), "Review README", createDeps());
 
     expect(handled).toBe(true);
-    expect(mocked.attachToSessionMock).toHaveBeenCalledWith({
-      bot: expect.any(Object),
-      chatId: 777,
-      session: {
-        id: "session-1",
-        title: "Session",
-        directory: "D:\\Projects\\Repo",
-      },
-      ensureEventSubscription: expect.any(Function),
-    });
+    expect(mocked.attachToSessionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bot: expect.any(Object),
+        chatId: 777,
+        session: {
+          id: "session-1",
+          title: "Session",
+          directory: "D:\\Projects\\Repo",
+        },
+        ensureEventSubscription: expect.any(Function),
+      }),
+    );
     expect(mocked.suppressionRegisterMock).toHaveBeenCalledWith("session-1", "Review README");
   });
 

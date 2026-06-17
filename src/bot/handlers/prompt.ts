@@ -208,6 +208,7 @@ export async function processUserPrompt(
     chatId: ctx.chat!.id,
     session: currentSession,
     ensureEventSubscription,
+    messageThreadId: ctx.message?.message_thread_id ?? null,
   });
 
   if (createdNewSession) {

@@ -349,6 +349,7 @@ async function selectSessionById(
           chatId,
           session: sessionInfo,
           ensureEventSubscription: deps.ensureEventSubscription,
+          messageThreadId: threadId,
         });
       } catch (err) {
         logger.error("[Sessions] Error attaching to session for forum topic:", err);
@@ -422,6 +423,7 @@ async function selectSessionById(
           chatId,
           session: sessionInfo,
           ensureEventSubscription: deps.ensureEventSubscription,
+          messageThreadId: topicBinding.threadId,
         });
       } catch (err) {
         logger.error("[Sessions] Error attaching to session for topic:", err);

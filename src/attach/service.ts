@@ -20,6 +20,7 @@ interface EnsureAttachPinnedSessionParams {
   chatId: number;
   session: SessionInfo;
   forceFullRestore?: boolean;
+  messageThreadId?: number | null;
 }
 
 export interface AttachSessionDeps {
@@ -28,6 +29,7 @@ export interface AttachSessionDeps {
   session: SessionInfo;
   ensureEventSubscription: (directory: string) => Promise<void>;
   forceFullRestore?: boolean;
+  messageThreadId?: number | null;
 }
 
 export interface AttachSessionResult {
@@ -58,9 +60,10 @@ async function ensureAttachPinnedSession({
   chatId,
   session,
   forceFullRestore = false,
+  messageThreadId,
 }: EnsureAttachPinnedSessionParams): Promise<void> {
   if (!pinnedMessageManager.isInitialized()) {
-    pinnedMessageManager.initialize(api, chatId);
+    pinnedMessageManager.initialize(api, chatId, messageThreadId);
   }
 
   keyboardManager.initialize(api, chatId);
@@ -153,7 +156,7 @@ async function restorePendingPermissions(
 }
 
 export async function attachToSession(deps: AttachSessionDeps): Promise<AttachSessionResult> {
-  const { bot, chatId, session, ensureEventSubscription, forceFullRestore = false } = deps;
+  const { bot, chatId, session, ensureEventSubscription, forceFullRestore = false, messageThreadId } = deps;
   const alreadyAttached = attachManager.isAttachedSession(session.id, session.directory);
 
   await ensureAttachPinnedSession({
@@ -161,6 +164,7 @@ export async function attachToSession(deps: AttachSessionDeps): Promise<AttachSe
     chatId,
     session,
     forceFullRestore,
+    messageThreadId,
   });
 
   if (!alreadyAttached) {

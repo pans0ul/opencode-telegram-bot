@@ -113,6 +113,7 @@ async function handleForumNewSession(
     chatId,
     session: sessionInfo,
     ensureEventSubscription: deps.ensureEventSubscription,
+    messageThreadId: threadId,
   });
 
   const currentAgent = await resolveProjectAgent(getStoredAgent());

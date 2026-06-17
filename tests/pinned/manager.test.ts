@@ -178,6 +178,7 @@ describe("pinned/manager", () => {
       expect(fakeApi.sendMessage).toHaveBeenCalledWith(
         123,
         expect.stringContaining("Project: D:/repo: main"),
+        expect.anything(),
       );
     });
 
@@ -195,10 +196,12 @@ describe("pinned/manager", () => {
       expect(fakeApi.sendMessage).toHaveBeenCalledWith(
         123,
         expect.stringContaining("Project: D:/repo"),
+        expect.anything(),
       );
       expect(fakeApi.sendMessage).not.toHaveBeenCalledWith(
         123,
         expect.stringContaining("Project: D:/repo:"),
+        expect.anything(),
       );
     });
 
@@ -221,10 +224,12 @@ describe("pinned/manager", () => {
       expect(fakeApi.sendMessage).toHaveBeenCalledWith(
         123,
         expect.stringContaining("Project: D:/repo: feature/worktree"),
+        expect.anything(),
       );
       expect(fakeApi.sendMessage).toHaveBeenCalledWith(
         123,
         expect.stringContaining("Worktree: D:/repo-feature"),
+        expect.anything(),
       );
     });
   });
