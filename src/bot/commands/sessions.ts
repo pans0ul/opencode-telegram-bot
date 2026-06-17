@@ -21,6 +21,9 @@ import { getDateLocale, t } from "../../i18n/index.js";
 import { attachToSession } from "../../attach/service.js";
 import { renderAssistantFinalPartsSafe } from "../utils/assistant-rendering.js";
 import { sendRenderedBotPart } from "../utils/telegram-text.js";
+import { isForumChat, isGroupGeneralControlScope } from "../scope.js";
+import { topicManager } from "../../topic/manager.js";
+import { formatTopicTitle } from "../../topic/title-format.js";
 
 const SESSION_CALLBACK_PREFIX = "session:";
 const SESSION_PAGE_CALLBACK_PREFIX = "session:page:";
@@ -285,6 +288,157 @@ async function selectSessionById(
     title: session.title,
     directory: currentProject.worktree,
   };
+
+  const inForum = isForumChat(ctx);
+  const inGeneralTopic = inForum && isGroupGeneralControlScope(ctx);
+
+  if (inForum && ctx.chat) {
+    const chatId = ctx.chat.id;
+
+    if (inGeneralTopic) {
+      const existingBinding = topicManager.getBindingBySessionId(session.id);
+      if (existingBinding && existingBinding.chatId === chatId) {
+        await ctx.answerCallbackQuery();
+        await ctx.reply(
+          t("topic.topic_link", {
+            title: session.title,
+            chatIdPart: String(chatId).replace("-100", ""),
+            threadId: String(existingBinding.threadId),
+          }),
+          { parse_mode: "MarkdownV2" },
+        );
+        return;
+      }
+
+      const topicTitle = formatTopicTitle(session.title || `Session ${session.id.slice(0, 8)}`);
+      let threadId: number;
+
+      try {
+        const topicResult = await ctx.api.createForumTopic(chatId, topicTitle);
+        threadId = topicResult.message_thread_id;
+        logger.info(`[Sessions] Created forum topic for session: "${topicTitle}" (threadId=${threadId})`);
+      } catch (err) {
+        logger.error("[Sessions] Failed to create forum topic:", err);
+        await ctx.reply(t("topic.create_error", { error: err instanceof Error ? err.message : String(err) }));
+        setCurrentSession(sessionInfo);
+        await attachToSession({
+          bot: deps.bot,
+          chatId,
+          session: sessionInfo,
+          ensureEventSubscription: deps.ensureEventSubscription,
+        });
+        return;
+      }
+
+      topicManager.registerBinding({
+        scopeKey: `${chatId}:${threadId}`,
+        chatId,
+        threadId,
+        sessionId: session.id,
+        directory: sessionInfo.directory,
+        status: "active",
+      });
+
+      setCurrentSession(sessionInfo);
+      clearAllInteractionState("session_switched");
+      await ctx.answerCallbackQuery();
+
+      try {
+        await attachToSession({
+          bot: deps.bot,
+          chatId,
+          session: sessionInfo,
+          ensureEventSubscription: deps.ensureEventSubscription,
+        });
+      } catch (err) {
+        logger.error("[Sessions] Error attaching to session for forum topic:", err);
+      }
+
+      const currentAgent = await resolveProjectAgent();
+      if (interactionManager.getSnapshot()?.kind !== "inline") {
+        keyboardManager.updateAgent(currentAgent);
+      }
+
+      try {
+        const keyboard = keyboardManager.getKeyboard();
+        await deps.bot.api.sendMessage(
+          chatId,
+          t("topic.created", { title: session.title }),
+          {
+            message_thread_id: threadId,
+            reply_markup: keyboard,
+          },
+        );
+      } catch (err) {
+        logger.error("[Sessions] Failed to send topic created message:", err);
+      }
+
+      try {
+        await ctx.reply(
+          t("sessions.selected", { title: session.title }),
+        );
+      } catch (err) {
+        logger.error("[Sessions] Failed to send selection confirmation:", err);
+      }
+
+      if (options.postSelectAction === "preview") {
+        safeBackgroundTask({
+          taskName: "sessions.sendPreview",
+          task: () =>
+            sendSessionPreview(
+              ctx.api,
+              chatId,
+              null,
+              session.title,
+              session.id,
+              currentProject.worktree,
+              threadId,
+            ),
+          onError: (err) => logger.error("[Sessions] Failed to send preview for forum topic:", err),
+        });
+      }
+
+      return;
+    }
+
+    const topicBinding = topicManager.getBinding(chatId, ctx.message?.message_thread_id ?? 0);
+    if (topicBinding) {
+      topicManager.registerBinding({
+        scopeKey: topicBinding.scopeKey,
+        chatId,
+        threadId: topicBinding.threadId,
+        sessionId: session.id,
+        directory: sessionInfo.directory,
+        status: "active",
+      });
+
+      setCurrentSession(sessionInfo);
+      clearAllInteractionState("session_switched");
+      await ctx.answerCallbackQuery();
+
+      try {
+        await attachToSession({
+          bot: deps.bot,
+          chatId,
+          session: sessionInfo,
+          ensureEventSubscription: deps.ensureEventSubscription,
+        });
+      } catch (err) {
+        logger.error("[Sessions] Error attaching to session for topic:", err);
+      }
+
+      if (ctx.chat) {
+        const currentAgent = await resolveProjectAgent();
+        if (interactionManager.getSnapshot()?.kind !== "inline") {
+          keyboardManager.updateAgent(currentAgent);
+        }
+      }
+
+      await ctx.reply(t("topic.binding_switched", { title: session.title }));
+      return;
+    }
+  }
+
   setCurrentSession(sessionInfo);
   clearAllInteractionState("session_switched");
 
@@ -623,9 +777,12 @@ async function sendSessionPreview(
   sessionTitle: string,
   sessionId: string,
   directory: string,
+  threadId?: number,
 ): Promise<void> {
   const previewItems = await loadSessionPreview(sessionId, directory);
   const finalText = formatSessionPreview(sessionTitle, previewItems);
+
+  const threadOpts = threadId ? { message_thread_id: threadId } : {};
 
   if (messageId) {
     try {
@@ -637,7 +794,7 @@ async function sendSessionPreview(
   }
 
   try {
-    await api.sendMessage(chatId, finalText);
+    await api.sendMessage(chatId, finalText, threadOpts);
   } catch (err) {
     logger.error("[Sessions] Failed to send session preview message:", err);
   }

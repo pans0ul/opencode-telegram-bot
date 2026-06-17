@@ -154,6 +154,15 @@ function getSessionRouteTarget(sessionId: string): { chatId: number; threadId: n
   return null;
 }
 
+function isEventSessionRelevant(sessionId: string): boolean {
+  const topicRoute = topicManager.getSessionRouteTarget(sessionId);
+  if (topicRoute) {
+    return true;
+  }
+  const currentSession = getCurrentSession();
+  return currentSession?.id === sessionId;
+}
+
 const TELEGRAM_DOCUMENT_CAPTION_MAX_LENGTH = 1024;
 const RESPONSE_STREAM_THROTTLE_MS = config.bot.responseStreamThrottleMs;
 const RESPONSE_STREAMING_MODE = config.bot.responseStreamingMode;
@@ -216,8 +225,7 @@ const toolMessageBatcher = new ToolMessageBatcher({
       return;
     }
 
-    const currentSession = getCurrentSession();
-    if (!currentSession || currentSession.id !== sessionId) {
+    if (!isEventSessionRelevant(sessionId)) {
       return;
     }
 
@@ -235,8 +243,7 @@ const toolMessageBatcher = new ToolMessageBatcher({
       return;
     }
 
-    const currentSession = getCurrentSession();
-    if (!currentSession || currentSession.id !== sessionId) {
+    if (!isEventSessionRelevant(sessionId)) {
       return;
     }
 
@@ -385,8 +392,7 @@ const toolCallStreamer = new ToolCallStreamer({
       throw new Error("Bot context missing for tool stream send");
     }
 
-    const currentSession = getCurrentSession();
-    if (!currentSession || currentSession.id !== sessionId) {
+    if (!isEventSessionRelevant(sessionId)) {
       throw new Error(`Tool stream session mismatch for send: ${sessionId}`);
     }
 
@@ -402,8 +408,7 @@ const toolCallStreamer = new ToolCallStreamer({
       throw new Error("Bot context missing for tool stream edit");
     }
 
-    const currentSession = getCurrentSession();
-    if (!currentSession || currentSession.id !== sessionId) {
+    if (!isEventSessionRelevant(sessionId)) {
       throw new Error(`Tool stream session mismatch for edit: ${sessionId}`);
     }
 
@@ -424,8 +429,7 @@ const toolCallStreamer = new ToolCallStreamer({
       throw new Error("Bot context missing for tool stream delete");
     }
 
-    const currentSession = getCurrentSession();
-    if (!currentSession || currentSession.id !== sessionId) {
+    if (!isEventSessionRelevant(sessionId)) {
       throw new Error(`Tool stream session mismatch for delete: ${sessionId}`);
     }
 
@@ -624,8 +628,7 @@ async function ensureEventSubscription(directory: string): Promise<void> {
       return;
     }
 
-    const currentSession = getCurrentSession();
-    if (!currentSession || currentSession.id !== sessionId) {
+    if (!isEventSessionRelevant(sessionId)) {
       return;
     }
 
@@ -655,8 +658,7 @@ async function ensureEventSubscription(directory: string): Promise<void> {
         return;
       }
 
-      const currentSession = getCurrentSession();
-      if (currentSession?.id !== sessionId) {
+      if (!isEventSessionRelevant(sessionId)) {
         clearPromptResponseMode(sessionId);
         responseStreamer.clearMessage(sessionId, messageId, "session_mismatch");
         toolCallStreamer.clearSession(sessionId, "session_mismatch");
@@ -755,8 +757,7 @@ async function ensureEventSubscription(directory: string): Promise<void> {
       return;
     }
 
-    const currentSession = getCurrentSession();
-    if (!currentSession || currentSession.id !== toolInfo.sessionId) {
+    if (!isEventSessionRelevant(toolInfo.sessionId)) {
       return;
     }
 
@@ -787,12 +788,11 @@ async function ensureEventSubscription(directory: string): Promise<void> {
       return;
     }
 
-    if (config.bot.hideToolCallMessages) {
+    if (!isEventSessionRelevant(sessionId)) {
       return;
     }
 
-    const currentSession = getCurrentSession();
-    if (!currentSession || currentSession.id !== sessionId) {
+    if (config.bot.hideToolCallMessages) {
       return;
     }
 
@@ -819,8 +819,7 @@ async function ensureEventSubscription(directory: string): Promise<void> {
       return;
     }
 
-    const currentSession = getCurrentSession();
-    if (!currentSession || currentSession.id !== fileInfo.sessionId) {
+    if (!isEventSessionRelevant(fileInfo.sessionId)) {
       return;
     }
 
@@ -849,14 +848,13 @@ async function ensureEventSubscription(directory: string): Promise<void> {
       return;
     }
 
-    const currentSession = getCurrentSession();
-    if (!currentSession || currentSession.id !== sessionId) {
+    if (!isEventSessionRelevant(sessionId)) {
       return;
     }
 
     await Promise.all([
-      toolMessageBatcher.flushSession(currentSession.id, "question_asked"),
-      toolCallStreamer.flushSession(currentSession.id, "question_asked"),
+      toolMessageBatcher.flushSession(sessionId, "question_asked"),
+      toolCallStreamer.flushSession(sessionId, "question_asked"),
     ]);
 
     if (questionManager.isActive()) {
@@ -920,8 +918,7 @@ async function ensureEventSubscription(directory: string): Promise<void> {
       return;
     }
 
-    const currentSession = getCurrentSession();
-    if (!currentSession || currentSession.id !== sessionId) {
+    if (!isEventSessionRelevant(sessionId)) {
       return;
     }
 
@@ -1015,8 +1012,7 @@ async function ensureEventSubscription(directory: string): Promise<void> {
       return;
     }
 
-    const currentSession = getCurrentSession();
-    if (!currentSession || currentSession.id !== sessionId) {
+    if (!isEventSessionRelevant(sessionId)) {
       foregroundSessionState.markIdle(sessionId);
       await scheduledTaskRuntime.flushDeferredDeliveries();
       return;
@@ -1069,8 +1065,7 @@ async function ensureEventSubscription(directory: string): Promise<void> {
       return;
     }
 
-    const currentSession = getCurrentSession();
-    if (!currentSession || currentSession.id !== sessionId) {
+    if (!isEventSessionRelevant(sessionId)) {
       clearPromptResponseMode(sessionId);
       responseStreamer.clearSession(sessionId, "session_error_not_current");
       toolCallStreamer.clearSession(sessionId, "session_error_not_current");
@@ -1116,8 +1111,7 @@ async function ensureEventSubscription(directory: string): Promise<void> {
       return;
     }
 
-    const currentSession = getCurrentSession();
-    if (!currentSession || currentSession.id !== sessionId) {
+    if (!isEventSessionRelevant(sessionId)) {
       return;
     }
 
