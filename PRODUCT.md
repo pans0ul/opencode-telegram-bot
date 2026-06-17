@@ -168,6 +168,7 @@ Model picker behavior:
 - [x] Optional local OpenCode server monitoring with automatic restart
 - [x] Interactive project file browsing and file download from Telegram (`/ls`)
 - [x] `/messages` command: browse session messages with revert and fork functionality
+- [x] Forum topics support: run parallel OpenCode sessions in Telegram forum supergroups. Each topic maps to a session, with General topic as the control panel (`/new`, `/sessions`). Responses are routed to the correct topic thread.
 
 ## Current Task List
 
@@ -176,3 +177,4 @@ Open tasks for upcoming iterations:
 - [ ] Model search in model switcher
 - [ ] Docker runtime support and deployment guide
 - [ ] Add a bot settings command with in-chat UI
+- [ ] Per-topic keyboard state in forum mode (currently shares across topics)

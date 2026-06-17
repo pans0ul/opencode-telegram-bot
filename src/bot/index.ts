@@ -586,12 +586,21 @@ async function ensureCommandsInitialized(ctx: Context, next: NextFunction): Prom
   }
 
   try {
-    await ctx.api.setMyCommands(BOT_COMMANDS, {
-      scope: {
-        type: "chat",
-        chat_id: ctx.chat.id,
-      },
-    });
+    if (ctx.chat.type === "supergroup") {
+      await ctx.api.setMyCommands(BOT_COMMANDS, {
+        scope: {
+          type: "chat",
+          chat_id: config.telegram.allowedUserId,
+        },
+      });
+    } else {
+      await ctx.api.setMyCommands(BOT_COMMANDS, {
+        scope: {
+          type: "chat",
+          chat_id: ctx.chat.id,
+        },
+      });
+    }
 
     commandsInitialized = true;
     logger.debug(`[Bot] Commands initialized for authorized user (chat_id=${ctx.chat.id})`);

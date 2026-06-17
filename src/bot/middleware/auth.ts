@@ -20,14 +20,18 @@ export async function authMiddleware(ctx: Context, next: NextFunction): Promise<
     // Only do this if the chat is NOT the authorized user's chat
     // (to avoid resetting commands when forwarded messages are received)
     if (ctx.chat?.id && ctx.chat.id !== config.telegram.allowedUserId) {
+      const isSupergroup = ctx.chat.type === "supergroup";
+      if (isSupergroup) {
+        logger.debug(`[Auth] Supergroup chat (id=${ctx.chat.id}), skipping command reset`);
+        return;
+      }
+
       try {
-        // Set empty commands for this specific chat (more reliable than deleteMyCommands)
         await ctx.api.setMyCommands([], {
           scope: { type: "chat", chat_id: ctx.chat.id },
         });
         logger.debug(`[Auth] Set empty commands for unauthorized chat_id=${ctx.chat.id}`);
       } catch (err) {
-        // Ignore errors
         logger.debug(`[Auth] Could not set empty commands: ${err}`);
       }
     }
