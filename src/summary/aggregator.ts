@@ -345,9 +345,19 @@ class SummaryAggregator {
       return;
     }
 
+    let failures = 0;
+
     const sendTyping = () => {
       if (this.bot && this.chatId) {
-        this.bot.api.sendChatAction(this.chatId, "typing").catch((err) => {
+        this.bot.api.sendChatAction(this.chatId, "typing").then(() => {
+          failures = 0;
+        }).catch((err) => {
+          failures++;
+          if (failures >= 3) {
+            logger.warn(`[Aggregator] Stopping typing indicator after ${failures} consecutive failures`);
+            this.stopTypingIndicator();
+            return;
+          }
           logger.error("Failed to send typing action:", err);
         });
       }

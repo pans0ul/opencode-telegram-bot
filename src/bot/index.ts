@@ -404,7 +404,8 @@ const toolCallStreamer = new ToolCallStreamer({
     return sentMessage.message_id;
   },
   editText: async (sessionId, messageId, text) => {
-    if (!botInstance || !chatIdInstance || chatIdInstance <= 0) {
+    const route = getSessionRouteTarget(sessionId);
+    if (!botInstance || !route) {
       throw new Error("Bot context missing for tool stream edit");
     }
 
@@ -413,7 +414,7 @@ const toolCallStreamer = new ToolCallStreamer({
     }
 
     try {
-      await botInstance.api.editMessageText(chatIdInstance, messageId, text);
+      await botInstance.api.editMessageText(route.chatId, messageId, text);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
@@ -425,7 +426,8 @@ const toolCallStreamer = new ToolCallStreamer({
     }
   },
   deleteText: async (sessionId, messageId) => {
-    if (!botInstance || !chatIdInstance || chatIdInstance <= 0) {
+    const route = getSessionRouteTarget(sessionId);
+    if (!botInstance || !route) {
       throw new Error("Bot context missing for tool stream delete");
     }
 
@@ -433,7 +435,7 @@ const toolCallStreamer = new ToolCallStreamer({
       throw new Error(`Tool stream session mismatch for delete: ${sessionId}`);
     }
 
-    await botInstance.api.deleteMessage(chatIdInstance, messageId).catch((error) => {
+    await botInstance.api.deleteMessage(route.chatId, messageId).catch((error) => {
       const errorMessage =
         error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
       if (
