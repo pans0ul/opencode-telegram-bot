@@ -26,15 +26,17 @@ interface ResponseStreamerCompleteOptions {
 interface ResponseStreamerOptions {
   throttleMs: number;
   sendPart: (
+    chatId: number,
     part: TelegramRenderedPart,
     options?: TelegramSendMessageOptions,
   ) => Promise<{ messageId: number; deliveredSignature: string }>;
   editPart: (
+    chatId: number,
     messageId: number,
     part: TelegramRenderedPart,
     options?: TelegramEditMessageOptions,
   ) => Promise<{ deliveredSignature: string }>;
-  deleteText: (messageId: number) => Promise<void>;
+  deleteText: (chatId: number, messageId: number) => Promise<void>;
   completePart?: (
     part: TelegramRenderedPart,
     options?: TelegramSendMessageOptions,
@@ -45,6 +47,7 @@ interface StreamState {
   key: string;
   sessionId: string;
   messageId: string;
+  chatId: number;
   latestPayload: StreamingMessagePayload | null;
   lastSentSignatures: string[];
   telegramMessageIds: number[];
@@ -136,7 +139,7 @@ export class ResponseStreamer {
     this.completePart = options.completePart;
   }
 
-  enqueue(sessionId: string, messageId: string, payload: StreamingMessagePayload): void {
+  enqueue(sessionId: string, messageId: string, payload: StreamingMessagePayload, chatId?: number): void {
     const normalizedPayload = normalizePayload(payload);
     if (!normalizedPayload) {
       return;
@@ -144,6 +147,9 @@ export class ResponseStreamer {
 
     const state = this.getOrCreateState(sessionId, messageId);
     state.latestPayload = normalizedPayload;
+    if (chatId !== undefined) {
+      state.chatId = chatId;
+    }
     if (state.isBroken) {
       return;
     }
@@ -287,6 +293,7 @@ export class ResponseStreamer {
       key,
       sessionId,
       messageId,
+      chatId: 0,
       latestPayload: null,
       lastSentSignatures: [],
       telegramMessageIds: [],
@@ -429,7 +436,7 @@ export class ResponseStreamer {
       }
 
       try {
-        await this.deleteText(messageId);
+        await this.deleteText(state.chatId, messageId);
       } catch (error) {
         logger.warn(
           `[ResponseStreamer] Failed to delete broken stream message: session=${state.sessionId}, message=${state.messageId}, telegramMessageId=${messageId}, reason=${reason}`,
@@ -460,12 +467,12 @@ export class ResponseStreamer {
           continue;
         }
 
-        const result = await this.editPart(currentMessageId, part, payload.editOptions);
+        const result = await this.editPart(state.chatId, currentMessageId, part, payload.editOptions);
         state.lastSentSignatures[index] = result.deliveredSignature;
         continue;
       }
 
-      const result = await this.sendPart(part, payload.sendOptions);
+      const result = await this.sendPart(state.chatId, part, payload.sendOptions);
       state.telegramMessageIds[index] = result.messageId;
       state.lastSentSignatures[index] = result.deliveredSignature;
     }
@@ -473,7 +480,7 @@ export class ResponseStreamer {
     for (let index = state.telegramMessageIds.length - 1; index >= payload.parts.length; index--) {
       const messageId = state.telegramMessageIds[index];
       if (messageId) {
-        await this.deleteText(messageId);
+        await this.deleteText(state.chatId, messageId);
       }
       state.telegramMessageIds.pop();
       state.lastSentSignatures.pop();

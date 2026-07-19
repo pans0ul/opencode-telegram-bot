@@ -281,28 +281,28 @@ function getNextDraftId(): number {
 const responseStreamer = RESPONSE_STREAMING_MODE === "draft"
   ? new ResponseStreamer({
       throttleMs: RESPONSE_STREAM_THROTTLE_MS,
-      sendPart: async (part) => {
-        if (!botInstance || !chatIdInstance || chatIdInstance <= 0) {
+      sendPart: async (chatId, part) => {
+        if (!botInstance || !chatId || chatId <= 0) {
           throw new Error("Bot context missing for draft send");
         }
 
         const draftId = getNextDraftId();
         const result = await sendDraftBotPart({
           api: botInstance.api,
-          chatId: chatIdInstance,
+          chatId,
           draftId,
           part,
         });
         return { messageId: draftId, deliveredSignature: result.deliveredSignature };
       },
-      editPart: async (messageId, part) => {
-        if (!botInstance || !chatIdInstance || chatIdInstance <= 0) {
+      editPart: async (chatId, messageId, part) => {
+        if (!botInstance || !chatId || chatId <= 0) {
           throw new Error("Bot context missing for draft edit");
         }
 
         return sendDraftBotPart({
           api: botInstance.api,
-          chatId: chatIdInstance,
+          chatId,
           draftId: messageId,
           part,
         });
@@ -325,27 +325,27 @@ const responseStreamer = RESPONSE_STREAMING_MODE === "draft"
     })
   : new ResponseStreamer({
       throttleMs: RESPONSE_STREAM_THROTTLE_MS,
-      sendPart: async (part, options) => {
-        if (!botInstance || !chatIdInstance || chatIdInstance <= 0) {
+      sendPart: async (chatId, part, options) => {
+        if (!botInstance || !chatId || chatId <= 0) {
           throw new Error("Bot context missing for streamed send");
         }
 
         return sendRenderedBotPart({
           api: botInstance.api,
-          chatId: chatIdInstance,
+          chatId,
           part,
           options,
         });
       },
-      editPart: async (messageId, part, options) => {
-        if (!botInstance || !chatIdInstance || chatIdInstance <= 0) {
+      editPart: async (chatId, messageId, part, options) => {
+        if (!botInstance || !chatId || chatId <= 0) {
           throw new Error("Bot context missing for streamed edit");
         }
 
         try {
           return await editRenderedBotPart({
             api: botInstance.api,
-            chatId: chatIdInstance,
+            chatId,
             messageId,
             part,
             options,
@@ -362,12 +362,12 @@ const responseStreamer = RESPONSE_STREAMING_MODE === "draft"
           throw error;
         }
       },
-      deleteText: async (messageId) => {
-        if (!botInstance || !chatIdInstance || chatIdInstance <= 0) {
+      deleteText: async (chatId, messageId) => {
+        if (!botInstance || !chatId || chatId <= 0) {
           throw new Error("Bot context missing for streamed delete");
         }
 
-        await botInstance.api.deleteMessage(chatIdInstance, messageId).catch((error) => {
+        await botInstance.api.deleteMessage(chatId, messageId).catch((error) => {
           const errorMessage =
             error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
           if (
@@ -653,7 +653,7 @@ async function ensureEventSubscription(directory: string): Promise<void> {
     preparedStreamPayload.sendOptions = { disable_notification: true };
     preparedStreamPayload.editOptions = undefined;
 
-    responseStreamer.enqueue(sessionId, messageId, preparedStreamPayload);
+    responseStreamer.enqueue(sessionId, messageId, preparedStreamPayload, route.chatId);
   });
 
   summaryAggregator.setOnComplete((sessionId, messageId, messageText, completionInfo) => {
